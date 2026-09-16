@@ -1,0 +1,82 @@
+---
+import { Image } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+
+interface Props {
+	author: CollectionEntry<'authors'>;
+}
+
+const { author } = Astro.props;
+const { name, avatar, bio, socialLinks } = author.data;
+---
+
+<section class="author-bio" aria-labelledby="author-bio-heading">
+	<Image class="author-avatar" src={avatar} alt={`Photo of ${name}`} width={96} height={96} />
+	<div class="author-details">
+		<h2 id="author-bio-heading" class="author-name">{name}</h2>
+		<p class="author-description">{bio}</p>
+		{
+			socialLinks.length > 0 && (
+				<ul class="author-social-links">
+					{socialLinks.map((link) => (
+						<li>
+							<a href={link.url} target="_blank" rel="noopener noreferrer">
+								{link.label}
+							</a>
+						</li>
+					))}
+				</ul>
+			)
+		}
+	</div>
+</section>
+
+<style>
+	.author-bio {
+		display: flex;
+		gap: 1.5em;
+		align-items: flex-start;
+		margin-top: 3em;
+		padding-top: 2em;
+		border-top: 1px solid rgb(var(--gray-light));
+	}
+	.author-avatar {
+		flex-shrink: 0;
+		width: 96px;
+		height: 96px;
+		border-radius: 50%;
+		object-fit: cover;
+	}
+	.author-name {
+		margin: 0 0 0.25em 0;
+		font-size: 1.25em;
+	}
+	.author-description {
+		margin: 0 0 0.75em 0;
+		color: rgb(var(--gray-dark));
+	}
+	.author-social-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1em;
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.author-social-links a {
+		text-decoration: none;
+	}
+	.author-social-links a:hover {
+		text-decoration: underline;
+	}
+	@media (max-width: 480px) {
+		.author-bio {
+			flex-direction: column;
+			align-items: center;
+			text-align: center;
+		}
+		.author-social-links {
+			justify-content: center;
+		}
+	}
+</style>
