@@ -9,3 +9,4 @@ export default tseslint.config(
   tseslint.configs.recommended,
   eslintPluginAstro.configs.recommended,
 ) satisfies Linter.Config[];
+);
