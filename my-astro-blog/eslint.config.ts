@@ -1,5 +1,6 @@
 import eslintPluginAstro from "eslint-plugin-astro";
 import tseslint from "typescript-eslint";
+import type { Linter } from "eslint";
 
 export default tseslint.config(
   {
@@ -7,4 +8,5 @@ export default tseslint.config(
   },
   tseslint.configs.recommended,
   eslintPluginAstro.configs.recommended,
+) satisfies Linter.Config[];
 );
