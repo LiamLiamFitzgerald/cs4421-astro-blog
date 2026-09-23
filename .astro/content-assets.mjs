@@ -1,0 +1,9 @@
+
+import __ASTRO_IMAGE_IMPORT_0 from "../../assets/blog-placeholder-1.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fmarkdown-style-guide.md";
+import __ASTRO_IMAGE_IMPORT_1 from "../../assets/blog-placeholder-2.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fthird-post.md";
+import __ASTRO_IMAGE_IMPORT_2 from "../../assets/blog-placeholder-3.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Ffirst-post.md";
+import __ASTRO_IMAGE_IMPORT_3 from "../../assets/blog-placeholder-4.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fsecond-post.md";
+import __ASTRO_IMAGE_IMPORT_4 from "../../assets/blog-placeholder-5.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fusing-mdx.mdx";
+import __ASTRO_IMAGE_IMPORT_5 from "../../assets/blog-placeholder-about.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fmarkdown-style-guide.md";
+export default new Map([["../../assets/blog-placeholder-1.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fmarkdown-style-guide.md", __ASTRO_IMAGE_IMPORT_0], ["../../assets/blog-placeholder-2.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fthird-post.md", __ASTRO_IMAGE_IMPORT_1], ["../../assets/blog-placeholder-3.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Ffirst-post.md", __ASTRO_IMAGE_IMPORT_2], ["../../assets/blog-placeholder-4.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fsecond-post.md", __ASTRO_IMAGE_IMPORT_3], ["../../assets/blog-placeholder-5.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fusing-mdx.mdx", __ASTRO_IMAGE_IMPORT_4], ["../../assets/blog-placeholder-about.jpg?astroContentImageFlag=&importer=src%2Fcontent%2Fblog%2Fmarkdown-style-guide.md", __ASTRO_IMAGE_IMPORT_5]]);
+		
