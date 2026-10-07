@@ -34,3 +34,14 @@ jobs:
 
       - name: Unit tests
         run: npm run test:unit
+
+      - name: Build site
+        run: npm run build
+
+      - name: Install CDK dependencies
+        run: npm ci
+        working-directory: cdk
+
+      - name: Validate infrastructure (cdk synth)
+        run: npx cdk synth --quiet
+        working-directory: cdk
