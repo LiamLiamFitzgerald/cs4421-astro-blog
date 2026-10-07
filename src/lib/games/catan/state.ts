@@ -18,6 +18,8 @@ export interface CatanState {
   readonly largestArmy: PlayerId | null;
   /** Holder of Longest Road, or null while vacant. */
   readonly longestRoad: PlayerId | null;
+  /** First player to reach the winning total, or null while the game is open. */
+  readonly winner: PlayerId | null;
 }
 
 export const emptyPlayer: PlayerState = {
@@ -34,4 +36,5 @@ export const initialState: CatanState = {
   players: {},
   largestArmy: null,
   longestRoad: null,
+  winner: null,
 };

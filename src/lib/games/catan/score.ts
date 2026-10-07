@@ -5,6 +5,7 @@ import type { CatanState, PlayerState } from "./state";
 export const SETTLEMENT_POINTS = 1;
 export const CITY_POINTS = 2;
 export const VICTORY_POINT_CARD_POINTS = 1;
+export const WINNING_POINTS = 10;
 
 /** Victory points from pieces and VP cards only (no awards). */
 export function basePoints(player: PlayerState): number {
@@ -28,4 +29,10 @@ export function awardPoints(state: CatanState, player: PlayerId): number {
     (state.largestArmy === player ? AWARD_POINTS : 0) +
     (state.longestRoad === player ? AWARD_POINTS : 0)
   );
+}
+
+/** Base points plus award points. */
+export function totalPoints(state: CatanState, player: PlayerId): number {
+  const tally = state.players[player];
+  return (tally ? basePoints(tally) : 0) + awardPoints(state, player);
 }

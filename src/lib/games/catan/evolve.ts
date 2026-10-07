@@ -4,6 +4,7 @@ import {
   resolveExclusiveAward,
 } from "./awards";
 import type { CatanEvent, PlayerId } from "./events";
+import { totalPoints, WINNING_POINTS } from "./score";
 import {
   emptyPlayer,
   initialState,
@@ -20,7 +21,7 @@ import {
  * no settlement to upgrade, is ignored rather than corrupting the tally.
  */
 export function evolve(state: CatanState, event: CatanEvent): CatanState {
-  return resolveAwards(applyEvent(state, event));
+  return latchWinner(resolveAwards(applyEvent(state, event)), event);
 }
 
 function applyEvent(state: CatanState, event: CatanEvent): CatanState {
@@ -61,6 +62,30 @@ function applyEvent(state: CatanState, event: CatanEvent): CatanState {
 /** Rebuilds a match from its event log. */
 export function replay(events: readonly CatanEvent[]): CatanState {
   return events.reduce(evolve, initialState);
+}
+
+/**
+ * Records the winner the first time anyone reaches the winning total. If the
+ * player who just acted is among those at the total they win; otherwise the
+ * highest total does, with ties going to the earlier player in turn order. Once
+ * set, the winner never changes.
+ */
+function latchWinner(state: CatanState, event: CatanEvent): CatanState {
+  if (state.winner !== null) return state;
+
+  const reached = state.playerOrder.filter(
+    (id) => totalPoints(state, id) >= WINNING_POINTS,
+  );
+  if (reached.length === 0) return state;
+
+  const actor = "player" in event ? event.player : null;
+  const winner =
+    actor !== null && reached.includes(actor)
+      ? actor
+      : reached.reduce((best, id) =>
+          totalPoints(state, id) > totalPoints(state, best) ? id : best,
+        );
+  return { ...state, winner };
 }
 
 /** Recomputes who holds each award from the current counts. */
