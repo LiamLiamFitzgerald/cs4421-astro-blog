@@ -1,3 +1,4 @@
+import { AWARD_POINTS } from "./awards";
 import type { PlayerId } from "./events";
 import type { CatanState, PlayerState } from "./state";
 
@@ -18,5 +19,13 @@ export function basePoints(player: PlayerState): number {
 export function baseScoreboard(state: CatanState): Record<PlayerId, number> {
   return Object.fromEntries(
     Object.entries(state.players).map(([id, player]) => [id, basePoints(player)]),
+  );
+}
+
+/** Bonus points from Largest Army and Longest Road. */
+export function awardPoints(state: CatanState, player: PlayerId): number {
+  return (
+    (state.largestArmy === player ? AWARD_POINTS : 0) +
+    (state.longestRoad === player ? AWARD_POINTS : 0)
   );
 }

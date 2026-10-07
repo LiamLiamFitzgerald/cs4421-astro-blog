@@ -1,3 +1,8 @@
+import {
+  LARGEST_ARMY_THRESHOLD,
+  LONGEST_ROAD_THRESHOLD,
+  resolveExclusiveAward,
+} from "./awards";
 import type { CatanEvent, PlayerId } from "./events";
 import {
   emptyPlayer,
@@ -15,6 +20,10 @@ import {
  * no settlement to upgrade, is ignored rather than corrupting the tally.
  */
 export function evolve(state: CatanState, event: CatanEvent): CatanState {
+  return resolveAwards(applyEvent(state, event));
+}
+
+function applyEvent(state: CatanState, event: CatanEvent): CatanState {
   switch (event.type) {
     case "GameStarted":
       return startGame(state, event.players);
@@ -52,6 +61,33 @@ export function evolve(state: CatanState, event: CatanEvent): CatanState {
 /** Rebuilds a match from its event log. */
 export function replay(events: readonly CatanEvent[]): CatanState {
   return events.reduce(evolve, initialState);
+}
+
+/** Recomputes who holds each award from the current counts. */
+function resolveAwards(state: CatanState): CatanState {
+  const largestArmy = resolveExclusiveAward({
+    incumbent: state.largestArmy,
+    counts: countsOf(state, (p) => p.knights),
+    threshold: LARGEST_ARMY_THRESHOLD,
+  });
+  const longestRoad = resolveExclusiveAward({
+    incumbent: state.longestRoad,
+    counts: countsOf(state, (p) => p.roadLength),
+    threshold: LONGEST_ROAD_THRESHOLD,
+  });
+  if (largestArmy === state.largestArmy && longestRoad === state.longestRoad) {
+    return state;
+  }
+  return { ...state, largestArmy, longestRoad };
+}
+
+function countsOf(
+  state: CatanState,
+  pick: (player: PlayerState) => number,
+): Record<PlayerId, number> {
+  return Object.fromEntries(
+    Object.entries(state.players).map(([id, player]) => [id, pick(player)]),
+  );
 }
 
 function startGame(state: CatanState, players: readonly PlayerId[]): CatanState {
