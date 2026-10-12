@@ -12,7 +12,9 @@
     "astro": "astro",
     "lint": "eslint .",
     "check": "astro check",
-    "test:unit": "vitest run --passWithNoTests"
+    "test:unit": "vitest run --passWithNoTests",
+    "prepare": "husky",
+    "commitlint": "commitlint"
   },
   "dependencies": {
     "@astrojs/mdx": "^8.0.1",
@@ -26,9 +28,11 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
     "eslint": "^10.11.0",
     "eslint-plugin-astro": "^1.7.0",
-    "fast-check": "^4.10.2",
+    "husky": "^9.1.7",
     "jiti": "^2.7.0",
     "prettier": "^3.9.9",
     "typescript": "^6.0.3",

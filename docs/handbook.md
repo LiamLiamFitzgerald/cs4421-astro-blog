@@ -28,6 +28,10 @@ Conventional Commits: `type(scope): summary`, for example
 
 Common types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`.
 
+The format is enforced twice: a local `commit-msg` hook (husky + commitlint, set
+up by `npm install`) rejects a bad message before the commit is made, and CI
+checks every commit in a pull request. Rules: `commitlint.config.mjs`.
+
 ## Pull requests
 
 1. Push the branch and open a PR into `develop` (check the base branch).
@@ -48,7 +52,9 @@ requests into `main` and `develop`, on Node 22:
 1. `npm ci`
 2. `npm run lint`: ESLint
 3. `npm run check`: `astro check` (type check)
-4. `npm run test:unit`: Vitest
+4. `npm run arch`: dependency-cruiser checks the layer rules in
+   `.dependency-cruiser.cjs` (see ADR-004)
+5. `npm run test:unit`: Vitest
 
 Run the same commands locally before pushing. The `cdk/` folder is a separate
 package with its own dependencies and is excluded from the root lint and type
