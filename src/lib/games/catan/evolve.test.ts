@@ -25,6 +25,28 @@ describe("Feature: match state is derived from events", () => {
     it("given no events, is the initial state", () => {
       expect(replay([])).toEqual(initialState);
     });
+
+    it("the initial state is an empty game with no awards or winner", () => {
+      expect(initialState).toEqual({
+        started: false,
+        playerOrder: [],
+        players: {},
+        largestArmy: null,
+        longestRoad: null,
+        winner: null,
+      });
+    });
+
+    it("given a second GameStarted, ignores it", () => {
+      const state = replay([
+        started,
+        { type: "SettlementBuilt", player: "ana" },
+        { type: "GameStarted", players: ["x", "y"] },
+      ]);
+
+      expect(state.playerOrder).toEqual(["ana", "ben"]);
+      expect(state.players.ana?.settlements).toBe(1);
+    });
   });
 
   describe("Scenario: building and upgrading", () => {

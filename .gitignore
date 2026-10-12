@@ -25,3 +25,7 @@ pnpm-debug.log*
 
 node_modules/
 .astro/
+
+# mutation testing
+.stryker-tmp/
+reports/
