@@ -47,5 +47,5 @@ jobs:
         working-directory: cdk
 
       - name: Deploy with CDK
-        run: npx cdk deploy --require-approval never
+        run: npx cdk deploy StaticSiteStack --require-approval never
         working-directory: cdk
