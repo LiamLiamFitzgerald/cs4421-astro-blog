@@ -50,7 +50,10 @@ requests into `main` and `develop`, on Node 22:
 3. `npm run check`: `astro check` (type check)
 4. `npm run test:unit`: Vitest
 
-Run the same commands locally before pushing. The `cdk/` folder is a separate
+Mutation testing (`npm run test:mutation`, Stryker) is slow, so it runs weekly and
+on demand in `.github/workflows/mutation.yml`, not on every PR. It fails below a
+mutation score of 75% (thresholds in `stryker.config.json`); the HTML report is
+uploaded as a workflow artifact. Run the same commands locally before pushing. The `cdk/` folder is a separate
 package with its own dependencies and is excluded from the root lint and type
 check.
 

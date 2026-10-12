@@ -28,6 +28,26 @@ describe("Feature: commands are validated against the rules", () => {
     });
 
     it.each([
+      ["two players", ["a", "b"]],
+      ["six players", ["a", "b", "c", "d", "e", "f"]],
+    ])("given %s, StartGame is accepted", (_label, players) => {
+      const result = when([], { type: "StartGame", players });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it.each([
+      ["a single player", ["ana"], "a game needs 2 to 6 players"],
+      ["more than six players", ["a", "b", "c", "d", "e", "f", "g"], "a game needs 2 to 6 players"],
+      ["a blank player id", ["ana", "  "], "player ids must not be blank"],
+      ["duplicate players", ["ana", "ana"], "player ids must be unique"],
+    ])("given %s, the reason explains why", (_label, players, reason) => {
+      const result = when([], { type: "StartGame", players });
+
+      expect(result).toMatchObject({ ok: false, error: { reason } });
+    });
+
+    it.each([
       ["a single player", ["ana"]],
       ["duplicate players", ["ana", "ana"]],
       ["a blank player id", ["ana", "  "]],

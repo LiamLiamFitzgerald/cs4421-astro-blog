@@ -21,7 +21,7 @@ import {
  * no settlement to upgrade, is ignored rather than corrupting the tally.
  */
 export function evolve(state: CatanState, event: CatanEvent): CatanState {
-  return latchWinner(resolveAwards(applyEvent(state, event)), event);
+  return latchWinner(resolveAwards(applyEvent(state, event)));
 }
 
 function applyEvent(state: CatanState, event: CatanEvent): CatanState {
@@ -65,27 +65,21 @@ export function replay(events: readonly CatanEvent[]): CatanState {
 }
 
 /**
- * Records the winner the first time anyone reaches the winning total. If the
- * player who just acted is among those at the total they win; otherwise the
- * highest total does, with ties going to the earlier player in turn order. Once
- * set, the winner never changes.
+ * Records the winner the first time anyone reaches the winning total. Once set
+ * it never changes.
+ *
+ * At most one player can newly reach the total on a single event: base points
+ * only change for the acting player, and an event moves at most one award, which
+ * lifts at most one player. So when the winner is unset, `reached` has at most
+ * one entry. (Found by mutation testing: an earlier tie-break here was dead code.)
  */
-function latchWinner(state: CatanState, event: CatanEvent): CatanState {
+function latchWinner(state: CatanState): CatanState {
   if (state.winner !== null) return state;
 
-  const reached = state.playerOrder.filter(
+  const winner = state.playerOrder.find(
     (id) => totalPoints(state, id) >= WINNING_POINTS,
   );
-  if (reached.length === 0) return state;
-
-  const actor = "player" in event ? event.player : null;
-  const winner =
-    actor !== null && reached.includes(actor)
-      ? actor
-      : reached.reduce((best, id) =>
-          totalPoints(state, id) > totalPoints(state, best) ? id : best,
-        );
-  return { ...state, winner };
+  return winner === undefined ? state : { ...state, winner };
 }
 
 /** Recomputes who holds each award from the current counts. */
