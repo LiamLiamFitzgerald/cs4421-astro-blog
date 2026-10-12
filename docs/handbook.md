@@ -13,6 +13,16 @@ The project uses GitFlow (see [ADR-002](adr/ADR-002-gitflow-branching-model.md))
   branches created from an up-to-date `develop`.
 - `release/<version>` and `hotfix/<name>`: merge into both `main` and `develop`.
 
+### Releases
+
+Versions and changelog are automated by release-please
+(`.github/workflows/release-please.yml`). When commits land on `main`, it opens or
+updates a release PR that bumps `package.json` and `CHANGELOG.md` from the
+Conventional Commit history (`feat` = minor, `fix` = patch, `!` = major).
+Merging that PR creates the tag and GitHub release. This is why commit messages
+are linted. The repository setting "Allow GitHub Actions to create pull requests"
+must be enabled.
+
 Start every piece of work with:
 
 ```
