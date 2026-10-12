@@ -28,6 +28,10 @@ Conventional Commits: `type(scope): summary`, for example
 
 Common types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`.
 
+The format is enforced twice: a local `commit-msg` hook (husky + commitlint, set
+up by `npm install`) rejects a bad message before the commit is made, and CI
+checks every commit in a pull request. Rules: `commitlint.config.mjs`.
+
 ## Pull requests
 
 1. Push the branch and open a PR into `develop` (check the base branch).
