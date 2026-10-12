@@ -5,6 +5,7 @@
   "mutate": [
     "src/lib/core/**/*.ts",
     "src/lib/games/**/*.ts",
+    "src/lib/observability/**/*.ts",
     "!src/lib/**/*.test.ts"
   ],
   "coverageAnalysis": "off",
