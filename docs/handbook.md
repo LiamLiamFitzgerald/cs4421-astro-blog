@@ -73,9 +73,10 @@ uploaded as a workflow artifact. Run the same commands locally before pushing. T
 package with its own dependencies and is excluded from the root lint and type
 check.
 
-## Branch protection (target configuration)
+## Branch protection
 
-Apply to both `main` and `develop`:
+Configured as a repository ruleset ("branch protection") that targets `main` and
+the default branch, `develop`:
 
 - Require a pull request before merging (0 approvals).
 - Require the `validate` status check to pass.
@@ -83,8 +84,12 @@ Apply to both `main` and `develop`:
 - Block force pushes and branch deletion.
 - Do not allow administrators to bypass these rules.
 
-**Status:** to be configured. Update this section once it is enabled and add
-screenshots to `docs/evidence/`.
+**Status:** enabled on 2026-10-12 (the ruleset was first created on 2026-10-07 without
+a required check; the `validate` check was added on 2026-10-12). The check matters:
+before it was required, a broken lockfile and a dropped `arch` script both reached
+`develop` through merges. Do not use "Update branch" on PRs that change
+`package.json` or the lockfile, because it text-merges the lockfile; rebase and
+run `npm install` instead. Add a screenshot of the ruleset to `docs/evidence/`.
 
 ## Testing conventions
 
