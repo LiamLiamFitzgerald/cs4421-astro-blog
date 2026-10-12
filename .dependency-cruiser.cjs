@@ -23,9 +23,10 @@ module.exports = {
     },
     {
       name: "app-does-not-depend-on-adapters-or-delivery",
-      comment: "The app layer depends on ports (interfaces), never on adapters or pages.",
+      comment:
+        "The app layer depends on ports (interfaces), never on adapters or pages. Tests are exempt: they act as the composition root and wire in an in-memory adapter.",
       severity: "error",
-      from: { path: "^src/lib/app/" },
+      from: { path: "^src/lib/app/", pathNot: "\\.test\\.ts$" },
       to: { path: "^src/(lib/adapters|pages|components|layouts)/" },
     },
     {
