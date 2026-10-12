@@ -13,6 +13,16 @@ The project uses GitFlow (see [ADR-002](adr/ADR-002-gitflow-branching-model.md))
   branches created from an up-to-date `develop`.
 - `release/<version>` and `hotfix/<name>`: merge into both `main` and `develop`.
 
+### Releases
+
+Versions and changelog are automated by release-please
+(`.github/workflows/release-please.yml`). When commits land on `main`, it opens or
+updates a release PR that bumps `package.json` and `CHANGELOG.md` from the
+Conventional Commit history (`feat` = minor, `fix` = patch, `!` = major).
+Merging that PR creates the tag and GitHub release. This is why commit messages
+are linted. The repository setting "Allow GitHub Actions to create pull requests"
+must be enabled.
+
 Start every piece of work with:
 
 ```
@@ -27,6 +37,10 @@ Conventional Commits: `type(scope): summary`, for example
 `fix(ci): exclude cdk from root lint and type check`.
 
 Common types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`.
+
+The format is enforced twice: a local `commit-msg` hook (husky + commitlint, set
+up by `npm install`) rejects a bad message before the commit is made, and CI
+checks every commit in a pull request. Rules: `commitlint.config.mjs`.
 
 ## Pull requests
 
@@ -48,7 +62,9 @@ requests into `main` and `develop`, on Node 22:
 1. `npm ci`
 2. `npm run lint`: ESLint
 3. `npm run check`: `astro check` (type check)
-4. `npm run test:unit`: Vitest
+4. `npm run arch`: dependency-cruiser checks the layer rules in
+   `.dependency-cruiser.cjs` (see ADR-004)
+5. `npm run test:unit`: Vitest
 
 Mutation testing (`npm run test:mutation`, Stryker) is slow, so it runs weekly and
 on demand in `.github/workflows/mutation.yml`, not on every PR. It fails below a
