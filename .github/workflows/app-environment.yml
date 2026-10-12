@@ -1,25 +1,37 @@
-name: Deploy App (ECS Fargate)
+name: App Environment (ECS Fargate)
 
-# ADR-001. Builds the Docker image, deploys the AppServiceStack with CDK, then
-# smoke-tests GET /api/health through CloudFront. A bad release is also rolled
-# back by the ECS deployment circuit breaker.
+# Lifecycle of the billable AppServiceStack (ADR-001). Roughly $1.40/day while
+# it exists (ALB, Fargate task, public IPv4 addresses), so it is never deployed
+# automatically:
+#   deploy   - build the image, deploy, smoke-test /api/health, leave it running
+#   rehearse - deploy, smoke-test, then ALWAYS destroy (cheap proof it works)
+#   destroy  - delete the stack
+# A nightly schedule also destroys it, so a forgotten stack costs at most a day.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do with the app environment"
+        type: choice
+        options: [deploy, rehearse, destroy]
+        default: rehearse
+  schedule:
+    - cron: "0 1 * * *" # 01:00 UTC every night: safety-net destroy
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-app
+  group: app-environment
   cancel-in-progress: false
 
+env:
+  ACTION: ${{ github.event.inputs.action || 'destroy' }}
+
 jobs:
-  deploy:
+  environment:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,9 +41,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            cdk/package-lock.json
+          cache-dependency-path: cdk/package-lock.json
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -45,10 +55,12 @@ jobs:
         working-directory: cdk
 
       - name: Deploy with CDK (builds and pushes the image)
+        if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
         run: npx cdk deploy AppServiceStack --require-approval never --outputs-file outputs.json
         working-directory: cdk
 
       - name: Smoke test /api/health
+        if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
         working-directory: cdk
         run: |
           URL=$(node -p "require('./outputs.json').AppServiceStack.HealthUrl")
@@ -60,3 +72,9 @@ jobs:
           done
           echo "Health check failed" >&2
           exit 1
+
+      - name: Destroy AppServiceStack
+        # Runs for destroy, the nightly schedule, and always after a rehearsal.
+        if: always() && (env.ACTION == 'destroy' || env.ACTION == 'rehearse')
+        run: npx cdk destroy AppServiceStack --force
+        working-directory: cdk
