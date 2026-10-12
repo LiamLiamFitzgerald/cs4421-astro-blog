@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
 import { StaticSiteStack } from '../lib/static-site-stack';
+import { AppServiceStack } from '../lib/app-service-stack';
 
 const app = new cdk.App();
 new StaticSiteStack(app, 'StaticSiteStack', {
@@ -17,4 +18,9 @@ new StaticSiteStack(app, 'StaticSiteStack', {
    env: { account: '480174683659', region: 'us-east-1' },
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
+});
+
+// ADR-001: container service. Deployed alongside the static stack until verified.
+new AppServiceStack(app, 'AppServiceStack', {
+  env: { account: '480174683659', region: 'us-east-1' },
 });

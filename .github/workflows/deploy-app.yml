@@ -1,0 +1,62 @@
+name: Deploy App (ECS Fargate)
+
+# ADR-001. Builds the Docker image, deploys the AppServiceStack with CDK, then
+# smoke-tests GET /api/health through CloudFront. A bad release is also rolled
+# back by the ECS deployment circuit breaker.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-app
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            cdk/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Install CDK dependencies
+        run: npm ci
+        working-directory: cdk
+
+      - name: Deploy with CDK (builds and pushes the image)
+        run: npx cdk deploy AppServiceStack --require-approval never --outputs-file outputs.json
+        working-directory: cdk
+
+      - name: Smoke test /api/health
+        working-directory: cdk
+        run: |
+          URL=$(node -p "require('./outputs.json').AppServiceStack.HealthUrl")
+          echo "Checking $URL"
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' "$URL" || true)
+            if [ "$CODE" = "200" ]; then cat /tmp/health.json; echo; exit 0; fi
+            echo "attempt $i: HTTP $CODE"; sleep 15
+          done
+          echo "Health check failed" >&2
+          exit 1

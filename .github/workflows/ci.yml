@@ -56,6 +56,10 @@ jobs:
         run: npm ci
         working-directory: cdk
 
+      - name: Infrastructure tests
+        run: npm test
+        working-directory: cdk
+
       - name: Validate infrastructure (cdk synth)
         run: npx cdk synth --quiet
         working-directory: cdk

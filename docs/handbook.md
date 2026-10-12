@@ -82,8 +82,14 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - Every request writes one JSON log line to stdout (timestamp, level, route,
   method, statusCode, latencyMs).
 - `docker build -t catan-app .` builds the production image; CI builds it too.
-- The old S3 static deploy is retired (manual-only) until the Fargate deploy
-  replaces it.
+- Production runs on ECS Fargate (`cdk/lib/app-service-stack.ts`): an ALB with
+  CloudFront in front, health-checked on `/api/health`, with a circuit breaker
+  that rolls back a failed deployment. `deploy-app.yml` deploys on push to `main`
+  (or manually) and smoke-tests the health URL.
+- Roll back by redeploying the previous commit; the image is built from the
+  commit's Dockerfile and the circuit breaker handles failed rollouts.
+- The old S3 static deploy is retired (manual-only) until the Fargate deploy has
+  been verified, then it is removed.
 
 ## Branch protection
 
