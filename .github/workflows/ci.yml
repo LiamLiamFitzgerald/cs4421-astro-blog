@@ -49,6 +49,9 @@ jobs:
       - name: Build site
         run: npm run build
 
+      - name: Build container image
+        run: docker build -t catan-app:ci .
+
       - name: Install CDK dependencies
         run: npm ci
         working-directory: cdk

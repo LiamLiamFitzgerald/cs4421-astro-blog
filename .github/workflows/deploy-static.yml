@@ -1,9 +1,10 @@
-name: Deploy Static Site
+name: Deploy Static Site (retired)
 
+# RETIRED by ADR-001: the site now builds in server mode (no dist/index.html),
+# so a push to main must not publish it to S3. Kept as a manual fallback only
+# until the container deploy (ECS Fargate) is verified, then it will be removed.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -73,6 +73,18 @@ uploaded as a workflow artifact. Run the same commands locally before pushing. T
 package with its own dependencies and is excluded from the root lint and type
 check.
 
+## Running the app
+
+The site runs in server mode on the Astro Node adapter (ADR-001).
+
+- `npm run build` then `node dist/server/entry.mjs` (set `PORT` and `HOST`).
+- `GET /api/health` returns `{ status, uptime, timestamp }`.
+- Every request writes one JSON log line to stdout (timestamp, level, route,
+  method, statusCode, latencyMs).
+- `docker build -t catan-app .` builds the production image; CI builds it too.
+- The old S3 static deploy is retired (manual-only) until the Fargate deploy
+  replaces it.
+
 ## Branch protection
 
 Configured as a repository ruleset ("branch protection") that targets `main` and
