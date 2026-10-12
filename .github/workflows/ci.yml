@@ -40,6 +40,9 @@ jobs:
       - name: Type check
         run: npm run check
 
+      - name: Architecture rules
+        run: npm run arch
+
       - name: Unit tests
         run: npm run test:unit
 
