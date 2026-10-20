@@ -25,13 +25,14 @@ export function parseClientErrorReport(body: unknown): Result<ClientErrorReport,
     return err("report must be a JSON object");
   }
   const fields = body as Record<string, unknown>;
-  const report: Record<keyof ClientErrorReport, string> = { context: "", name: "", message: "", page: "" };
+  const report: Partial<Record<keyof ClientErrorReport, string>> = {};
   for (const key of Object.keys(LIMITS) as (keyof ClientErrorReport)[]) {
     const value = fields[key] ?? (key === "name" ? "Error" : undefined);
     if (typeof value !== "string" || value.trim() === "") return err(`${key} must be a non-empty string`);
     if (value.length > LIMITS[key]) return err(`${key} must be at most ${LIMITS[key]} characters`);
     report[key] = value;
   }
-  if (!report.page.startsWith("/")) return err("page must be a path starting with /");
-  return ok(report);
+  const complete = report as ClientErrorReport;
+  if (!complete.page.startsWith("/")) return err("page must be a path starting with /");
+  return ok(complete);
 }
