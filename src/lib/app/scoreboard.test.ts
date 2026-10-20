@@ -4,7 +4,10 @@ import { replay } from "../games/catan/evolve";
 import {
   buildScoreboard,
   describeEvent,
+  describeFailure,
   describeViolation,
+  parsePlayerNames,
+  parseSeed,
 } from "./scoreboard";
 
 const log = (...events: CatanEvent[]) => replay(events);
@@ -72,6 +75,9 @@ describe("Feature: readable messages", () => {
     );
     expect(describeViolation({ code: "GAME_OVER", winner: "ben" })).toContain("ben");
     expect(describeViolation({ code: "INVALID_SEED", seed: -1 })).toBe("-1 is not a valid board seed.");
+    expect(describeViolation({ code: "INVALID_PLAYERS", reason: "a game needs 2 to 6 players" })).toBe(
+      "A game needs 2 to 6 players.",
+    );
   });
 
   it("describes events for the history list", () => {
@@ -79,5 +85,55 @@ describe("Feature: readable messages", () => {
     expect(describeEvent({ type: "GameStarted", players: ["ana", "ben"] })).toBe(
       "Game started: ana, ben",
     );
+  });
+});
+
+describe("Feature: reading setup input", () => {
+  it("trims names and ignores empty fields", () => {
+    expect(parsePlayerNames([" Ana ", "", "Ben", "   "])).toEqual(["Ana", "Ben"]);
+  });
+
+  it("keeps duplicates so the rules can reject them", () => {
+    expect(parsePlayerNames(["Ana", "Ana"])).toEqual(["Ana", "Ana"]);
+  });
+
+  it.each([
+    ["42", 42],
+    ["0", 0],
+    [null, null],
+    ["", null],
+    ["-3", null],
+    ["1.5", null],
+    ["abc", null],
+    ["12abc", null],
+  ])("parses seed %j as %j", (input, expected) => {
+    expect(parseSeed(input)).toBe(expected);
+  });
+});
+
+describe("Feature: explaining unexpected failures", () => {
+  const named = (name: string, message = "boom") => Object.assign(new Error(message), { name });
+
+  it("explains full storage", () => {
+    expect(describeFailure(named("QuotaExceededError")).title).toContain("storage is full");
+  });
+
+  it("explains blocked storage", () => {
+    expect(describeFailure(named("SecurityError")).title).toContain("blocking storage");
+  });
+
+  it("falls back to a general message with a retry hint", () => {
+    const failure = describeFailure(new TypeError("x is undefined"));
+    expect(failure.title).toBe("Something went wrong and the action was not saved.");
+    expect(failure.advice).toContain("Try again");
+    expect(failure.detail).toBe("TypeError: x is undefined");
+  });
+
+  it("handles thrown values that are not errors", () => {
+    expect(describeFailure("nope").detail).toBe("string: nope");
+  });
+
+  it("keeps the technical detail short", () => {
+    expect(describeFailure(new Error("a".repeat(500))).detail.length).toBe(200);
   });
 });
