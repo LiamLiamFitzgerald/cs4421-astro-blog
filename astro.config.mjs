@@ -1,6 +1,5 @@
 // @ts-check
 
-import mdx from '@astrojs/mdx';
 import node from '@astrojs/node';
 import sitemap from '@astrojs/sitemap';
 import { defineConfig, fontProviders } from 'astro/config';
@@ -12,7 +11,7 @@ export default defineConfig({
 	// requests (see docs/adr/ADR-001). Packaged by the Dockerfile.
 	output: 'server',
 	adapter: node({ mode: 'standalone' }),
-	integrations: [mdx(), sitemap()],
+	integrations: [sitemap()],
 	fonts: [
 		{
 			provider: fontProviders.local(),
