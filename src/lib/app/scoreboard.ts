@@ -49,7 +49,7 @@ export function describeViolation(violation: RuleViolation): string {
     case "GAME_OVER":
       return `The game is over: ${violation.winner} has already won.`;
     case "INVALID_PLAYERS":
-      return `Invalid players: ${violation.reason}.`;
+      return `${violation.reason.charAt(0).toUpperCase()}${violation.reason.slice(1)}.`;
     case "UNKNOWN_PLAYER":
       return `${violation.player} is not in this game.`;
     case "NO_SETTLEMENT_TO_UPGRADE":
@@ -77,4 +77,48 @@ export function describeEvent(event: CatanEvent): string {
     case "RoadLengthRecorded":
       return `${event.player} has a road of length ${event.length}`;
   }
+}
+
+/** Trims the name fields and drops empty ones. The rules (count, duplicates) stay in `decide`. */
+export function parsePlayerNames(fields: readonly string[]): string[] {
+  return fields.map((name) => name.trim()).filter((name) => name !== "");
+}
+
+/** Reads a `?seed=` value. Returns null when it is missing or not a whole number. */
+export function parseSeed(value: string | null): number | null {
+  if (value === null || !/^\d+$/.test(value)) return null;
+  return Number(value);
+}
+
+/** What to tell the player when something fails that the rules did not expect. */
+export interface FailureMessage {
+  readonly title: string;
+  readonly advice: string;
+  /** Short technical summary for bug reports. Never includes a stack trace. */
+  readonly detail: string;
+}
+
+export function describeFailure(error: unknown): FailureMessage {
+  const name = error instanceof Error ? error.name : typeof error;
+  const message = error instanceof Error ? error.message : String(error);
+  const detail = `${name}: ${message}`.slice(0, 200);
+  if (name === "QuotaExceededError") {
+    return {
+      title: "The game could not be saved because browser storage is full.",
+      advice: "Free up space for this site, or start a new game, then try again.",
+      detail,
+    };
+  }
+  if (name === "SecurityError") {
+    return {
+      title: "This browser is blocking storage for this site.",
+      advice: "Allow site data for this page, or use a normal (not private) window, then try again.",
+      detail,
+    };
+  }
+  return {
+    title: "Something went wrong and the action was not saved.",
+    advice: "Try again. If it keeps happening, reload the page; your saved game is kept.",
+    detail,
+  };
 }

@@ -69,10 +69,10 @@ function startGame(
     });
   }
   if (players.some((id) => id.trim() === "")) {
-    return err({ code: "INVALID_PLAYERS", reason: "player ids must not be blank" });
+    return err({ code: "INVALID_PLAYERS", reason: "player names must not be blank" });
   }
   if (new Set(players).size !== players.length) {
-    return err({ code: "INVALID_PLAYERS", reason: "player ids must be unique" });
+    return err({ code: "INVALID_PLAYERS", reason: "each player needs a different name" });
   }
   if (seed === undefined) return ok([{ type: "GameStarted", players: [...players] }]);
   if (!isValidSeed(seed)) return err({ code: "INVALID_SEED", seed });

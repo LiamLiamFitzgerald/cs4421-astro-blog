@@ -33,12 +33,21 @@ winner, show why a command was refused, and list the event log.
 5. **The DOM is built with `createElement` and `textContent`, never
    `innerHTML`.** Player names are typed by the user, so inserting them as HTML
    would allow script injection.
-6. **Styles are global but namespaced under `.catan`.** Astro's scoped styles
-   cannot reach elements created by the script, so scoped CSS left the cards
-   unstyled. The page reuses the template's colour variables and has no dark
-   theme, matching the rest of the site.
+6. **Styles come from the design system (ADR-007).** Page-specific rules are
+   global but namespaced under `.scoreboard`, because Astro's scoped styles
+   cannot reach elements created by the script.
 7. **Games are kept in browser storage** (`LocalStorageEventStore`, #71), falling
    back to memory if storage is blocked. Nothing is stored on the server.
+
+8. **Every failure path is visible.** Rule violations are shown next to the
+   player who caused them. Anything else (for example full or blocked browser
+   storage) shows an error with a plain explanation, technical details and a
+   Try again button; the view is redrawn from the store so it never shows a
+   half-applied change, and controls are re-enabled in a `finally` block. If
+   storage is blocked the page falls back to memory and says so. Discarding a
+   game asks for confirmation in a native `<dialog>`.
+9. **The browser controller lives in `src/ui/scoreboard.ts`**, and the page file
+   holds only markup and styles.
 
 ## Consequences
 

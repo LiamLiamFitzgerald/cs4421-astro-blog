@@ -40,8 +40,8 @@ describe("Feature: commands are validated against the rules", () => {
     it.each([
       ["a single player", ["ana"], "a game needs 2 to 6 players"],
       ["more than six players", ["a", "b", "c", "d", "e", "f", "g"], "a game needs 2 to 6 players"],
-      ["a blank player id", ["ana", "  "], "player ids must not be blank"],
-      ["duplicate players", ["ana", "ana"], "player ids must be unique"],
+      ["a blank player id", ["ana", "  "], "player names must not be blank"],
+      ["duplicate players", ["ana", "ana"], "each player needs a different name"],
     ])("given %s, the reason explains why", (_label, players, reason) => {
       const result = when([], { type: "StartGame", players });
 
