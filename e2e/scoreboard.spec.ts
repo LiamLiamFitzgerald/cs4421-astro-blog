@@ -5,8 +5,10 @@ const card = (page: Page, name: string) =>
 
 const points = (page: Page, name: string) => card(page, name).locator(".player__score strong");
 
+/** Starts a game in "Just keep score" mode (play mode has its own spec). */
 async function startGame(page: Page, names: string[], seed = 42) {
   await page.goto(`/catan?seed=${seed}`);
+  await page.getByRole("radio", { name: /Just keep score/ }).check();
   const fields = page.locator("#player-fields input");
   while ((await fields.count()) < names.length) {
     await page.getByRole("button", { name: "Add a player" }).click();
@@ -109,7 +111,7 @@ test.describe("Feature: scoring a game", () => {
 
     await expect(points(page, "Ana")).toHaveText("3");
     await expect(page.locator("#announcer")).toHaveText("Ana upgraded a settlement to a city. Ana has 3 points.");
-    await page.locator("summary", { hasText: "Event log" }).click();
+    await page.locator("#game summary", { hasText: "Event log" }).click();
     await expect(page.locator("#events li").first()).toHaveText("Ana upgraded a settlement to a city");
     await expect(page.locator("#event-count")).toHaveText("4");
   });

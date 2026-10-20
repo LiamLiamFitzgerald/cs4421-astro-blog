@@ -161,7 +161,8 @@ Write the test from the acceptance criteria first, then the implementation.
 | Path | Contents |
 | --- | --- |
 | `src/lib/` | Game core, app layer, adapters and observability (no DOM) |
-| `src/ui/` | Browser code: board drawing, icons, scoreboard controller, error reporting |
+| `src/lib/games/catan-play/` | Rules for playing on the site (ADR-008): board graph, setup, turns, building |
+| `src/ui/` | Browser code: board drawing, icons, play and scoreboard controllers, feedback, error reporting |
 | `src/pages/`, `src/components/`, `src/layouts/`, `src/styles/` | Routes, shared components and the design system |
 | `e2e/` | Playwright browser tests |
 | `cdk/` | AWS CDK (TypeScript) infrastructure app |

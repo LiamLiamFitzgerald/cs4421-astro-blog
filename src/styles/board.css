@@ -54,3 +54,80 @@
 .board__pip--red {
 	fill: var(--color-token-red);
 }
+
+/* Play mode: pieces in seat colours, outlined so they read on any terrain. */
+.piece {
+	--seat-colour: var(--color-ink-muted);
+}
+.piece__body {
+	fill: var(--seat-colour);
+	stroke: var(--color-surface);
+	stroke-width: 2;
+	stroke-linejoin: round;
+	filter: drop-shadow(0 1px 1px rgb(20 20 10 / 0.45));
+}
+.piece--city .piece__body {
+	stroke-width: 2.2;
+}
+.piece__road-edge {
+	stroke: var(--color-surface);
+	stroke-width: 10;
+	stroke-linecap: round;
+}
+.piece__road {
+	stroke: var(--seat-colour);
+	stroke-width: 6;
+	stroke-linecap: round;
+}
+
+/* Legal spots for the current action. */
+.board__target {
+	cursor: pointer;
+	fill: rgb(251 247 236 / 0.85);
+	stroke: var(--color-forest);
+	stroke-width: 2.5;
+	outline: none;
+	transition: fill var(--duration-fast) var(--ease-out);
+	animation: target-pulse 1.6s ease-in-out infinite;
+}
+.board__target:hover,
+.board__target:focus-visible {
+	fill: var(--terrain-fields);
+	stroke: var(--color-forest-strong);
+	stroke-width: 3.5;
+}
+.board__target--edge {
+	fill: none;
+}
+.board__target-hit {
+	fill: transparent;
+	stroke: none;
+}
+.board__target-line {
+	stroke: var(--color-surface);
+	stroke-width: 5;
+	stroke-dasharray: 6 5;
+	stroke-linecap: round;
+}
+.board__target--edge:hover .board__target-line,
+.board__target--edge:focus-visible .board__target-line {
+	stroke: var(--terrain-fields);
+	stroke-width: 7;
+	stroke-dasharray: none;
+}
+@keyframes target-pulse {
+	50% {
+		opacity: 0.6;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.board__target {
+		animation: none;
+	}
+}
+/* Bigger touch targets when the board is drawn small. */
+@media (max-width: 40rem) {
+	circle.board__target {
+		r: 19px;
+	}
+}

@@ -4,12 +4,12 @@ import Layout from '../layouts/Layout.astro';
 import '../styles/board.css';
 ---
 
-<Layout title="Scoreboard" description="Deal a board and keep score for a game of Catan.">
+<Layout title="Play" description="Play Catan on one device, or keep score of a game on a real board.">
 	<div class="scoreboard">
 		<p id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></p>
 
 		<div class="toolbar">
-			<h1>Scoreboard</h1>
+			<h1>Catan</h1>
 			<button id="new-game" class="button" type="button" hidden>
 				<Icon name="plus" />
 				New game
@@ -49,6 +49,23 @@ import '../styles/board.css';
 			</figure>
 
 			<form id="setup-form" class="panel setup__form" novalidate>
+				<fieldset class="modes">
+					<legend>How do you want to play?</legend>
+					<label class="mode">
+						<input type="radio" name="mode" value="play" checked />
+						<span class="mode__text">
+							<span class="mode__name">Play on the site</span>
+							<span class="hint">Place pieces, roll dice and collect resources, passing this device round.</span>
+						</span>
+					</label>
+					<label class="mode">
+						<input type="radio" name="mode" value="score" />
+						<span class="mode__text">
+							<span class="mode__name">Just keep score</span>
+							<span class="hint">Play on a real board and record points here.</span>
+						</span>
+					</label>
+				</fieldset>
 				<h2 id="setup-title">Who is playing?</h2>
 				<p class="hint">Enter 2 to 6 names in seating order. The first player goes first.</p>
 				<ol id="player-fields" class="player-fields"></ol>
@@ -93,6 +110,33 @@ import '../styles/board.css';
 					this list.
 				</p>
 				<ol id="events" reversed></ol>
+			</details>
+		</section>
+
+		<!-- Play mode: a game played on the site (src/ui/play.ts). -->
+		<section id="play" class="play" aria-label="Game in progress" hidden>
+			<div id="play-winner" class="notice notice--success" role="status" hidden>
+				<Icon name="crown" />
+				<div class="notice__body"></div>
+			</div>
+			<div class="game__layout">
+				<figure class="game__board">
+					<svg id="play-board" class="board" aria-label="The board, with everyone's pieces"></svg>
+					<ol id="play-board-list" class="sr-only" aria-label="Hexes on this board"></ol>
+					<figcaption id="play-board-hint" class="hint board-hint" aria-live="polite"></figcaption>
+				</figure>
+				<div class="game__side">
+					<section id="play-turn" class="panel turn" aria-labelledby="turn-title"></section>
+					<h2 class="sr-only">Players</h2>
+					<div id="play-players" class="players"></div>
+				</div>
+			</div>
+			<details class="history">
+				<summary>
+					Event log <span class="history__count">(<span id="play-event-count">0</span> events)</span>
+				</summary>
+				<p class="hint">Every move is stored as an event, newest first. The game is rebuilt from this list.</p>
+				<ol id="play-events" reversed></ol>
 			</details>
 		</section>
 
@@ -442,6 +486,255 @@ import '../styles/board.css';
 		.scoreboard .setup__board .board {
 			max-width: 26rem;
 			margin: 0 auto;
+		}
+	}
+	/* Mode choice */
+	.scoreboard .modes {
+		display: grid;
+		gap: var(--space-2);
+		margin: 0 0 var(--space-2);
+		padding: 0;
+		border: 0;
+	}
+	.scoreboard .modes legend {
+		font-family: var(--font-heading);
+		font-size: var(--text-xl);
+		font-weight: 700;
+		margin-bottom: var(--space-2);
+	}
+	.scoreboard .mode {
+		display: flex;
+		gap: var(--space-3);
+		align-items: flex-start;
+		padding: var(--space-3);
+		border: 1px solid var(--color-line);
+		border-radius: var(--radius-s);
+		cursor: pointer;
+		background: #fffdf7;
+	}
+	.scoreboard .mode:has(input:checked) {
+		border-color: var(--color-forest);
+		box-shadow: inset 0 0 0 1px var(--color-forest);
+		background: var(--color-forest-tint);
+	}
+	.scoreboard .mode input {
+		margin-top: 0.3rem;
+		accent-color: var(--color-forest);
+	}
+	.scoreboard .mode__text {
+		display: grid;
+	}
+	.scoreboard .mode__name {
+		font-weight: 700;
+	}
+
+	/* Play mode */
+	.scoreboard .board-hint {
+		min-height: 1.5em;
+		margin-top: var(--space-2);
+		text-align: center;
+		font-weight: 500;
+		color: var(--color-forest);
+	}
+	.scoreboard .turn {
+		display: grid;
+		gap: var(--space-3);
+		padding: var(--space-4);
+		border-top: 5px solid var(--color-forest);
+	}
+	.scoreboard .turn__head {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+	.scoreboard .turn__title {
+		margin: 0;
+		font-size: var(--text-xl);
+		flex: 1;
+	}
+	.scoreboard .turn__phase {
+		padding: 0.1rem var(--space-2);
+		border-radius: var(--radius-full);
+		background: var(--color-gold-tint);
+		color: #6b4d0f;
+		font-size: var(--text-xs);
+		font-weight: 700;
+	}
+	.scoreboard .turn__step {
+		margin: 0;
+		font-weight: 500;
+	}
+	.scoreboard .turn__actions {
+		display: grid;
+		gap: var(--space-3);
+	}
+	.scoreboard .turn__end {
+		justify-self: end;
+	}
+	.scoreboard .roll {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-s);
+		background: var(--color-surface-sunk);
+	}
+	.scoreboard .roll__dice {
+		display: flex;
+		gap: var(--space-1);
+		flex: none;
+	}
+	.scoreboard .roll__text {
+		margin: 0;
+		font-size: var(--text-s);
+	}
+	.scoreboard .die {
+		width: 2.4rem;
+		height: 2.4rem;
+	}
+	.scoreboard .die__face {
+		fill: #fffdf7;
+		stroke: var(--color-line-strong);
+		stroke-width: 2;
+	}
+	.scoreboard .die__pip {
+		fill: var(--color-ink);
+	}
+	.scoreboard .roll--new .die {
+		animation: die-roll 420ms var(--ease-out);
+	}
+	@keyframes die-roll {
+		0% {
+			transform: rotate(-25deg) scale(0.8);
+		}
+		60% {
+			transform: rotate(12deg) scale(1.05);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.scoreboard .roll--new .die {
+			animation: none;
+		}
+	}
+	.scoreboard .builds {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: var(--space-2);
+	}
+	.scoreboard .build {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-1);
+		height: auto;
+		padding: var(--space-2) var(--space-3);
+		text-align: left;
+		line-height: 1.25;
+	}
+	.scoreboard .build[aria-pressed='true'] {
+		background: var(--color-forest);
+		border-color: var(--color-forest-strong);
+		color: var(--color-ink-inverse);
+	}
+	.scoreboard .build__label {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		font-weight: 700;
+	}
+	.scoreboard .build .cost {
+		display: inline-flex;
+		gap: 1px;
+	}
+	.scoreboard .build .cost .icon {
+		width: 1rem;
+		height: 1rem;
+	}
+	.scoreboard .build__note {
+		font-size: var(--text-xs);
+		opacity: 0.85;
+	}
+	.scoreboard .trade {
+		display: grid;
+		gap: var(--space-2);
+		padding-top: var(--space-3);
+		border-top: 1px solid var(--color-line);
+	}
+	.scoreboard .trade__title {
+		margin: 0;
+		font-weight: 500;
+		font-size: var(--text-s);
+	}
+	.scoreboard .trade__row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+	.scoreboard .trade__select {
+		min-height: 2rem;
+		padding: var(--space-1) var(--space-2);
+		font-size: var(--text-s);
+	}
+	.scoreboard .trade__for {
+		color: var(--color-ink-muted);
+		font-size: var(--text-s);
+	}
+	.scoreboard .play-player {
+		display: grid;
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-4);
+		border-left: 5px solid var(--seat-colour);
+	}
+	.scoreboard .play-player--current {
+		box-shadow: 0 0 0 2px var(--color-forest), var(--shadow-1);
+	}
+	.scoreboard .hand {
+		display: grid;
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+		gap: var(--space-1);
+		margin: 0;
+		text-align: center;
+	}
+	.scoreboard .hand__item {
+		display: grid;
+		justify-items: center;
+		padding: var(--space-1) 0;
+		border-radius: var(--radius-s);
+		background: var(--color-surface-sunk);
+	}
+	.scoreboard .hand__item--none {
+		opacity: 0.55;
+	}
+	.scoreboard .hand__count {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		margin: 0;
+		font-weight: 700;
+	}
+	.scoreboard .hand__name {
+		font-size: var(--text-xs);
+		color: var(--color-ink-muted);
+	}
+	.scoreboard .supply {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-1) var(--space-3);
+		margin: 0;
+		font-size: var(--text-xs);
+		color: var(--color-ink-muted);
+	}
+	.scoreboard .supply__item {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+	}
+	.scoreboard .play[aria-busy='true'] .turn {
+		opacity: 0.7;
+	}
+	@media (max-width: 40rem) {
+		.scoreboard .builds {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

@@ -77,3 +77,11 @@ describe("Feature: drawing the board", () => {
     });
   });
 });
+
+describe("Feature: placing pieces on the drawing", () => {
+  it("draws the centre hex's top corner straight above its centre, one radius up", async () => {
+    const { cornerPoint } = await import("./board-view");
+    expect(cornerPoint({ x: 0, y: -2 }, 50)).toEqual({ x: 0, y: -50 });
+    expect(cornerPoint({ x: 1, y: -1 }, 50)).toEqual({ x: 43.3, y: -25 });
+  });
+});

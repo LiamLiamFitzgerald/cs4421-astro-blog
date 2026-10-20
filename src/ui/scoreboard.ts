@@ -1,7 +1,8 @@
 /**
- * Browser controller for /catan. It reads input, sends commands through the
- * app layer, and draws the result. It holds no game rules (ADR-006): every
- * rule lives in decide/evolve and every message in src/lib/app/scoreboard.ts.
+ * Browser controller for /catan. It runs the setup screen, the "Just keep
+ * score" mode, and hands played games to the play controller (src/ui/play.ts).
+ * It holds no game rules (ADR-006): every rule lives in decide/evolve and
+ * every message in src/lib/app.
  */
 import { LocalStorageEventStore } from '../lib/adapters/local-storage-event-store';
 import { MemoryEventStore } from '../lib/adapters/memory-event-store';
@@ -10,7 +11,6 @@ import { executeCommand, loadGame } from '../lib/app/catan-service';
 import {
 	buildScoreboard,
 	describeEvent,
-	describeFailure,
 	describeViolation,
 	parsePlayerNames,
 	parseSeed,
@@ -21,14 +21,14 @@ import type { CatanCommand } from '../lib/games/catan/commands';
 import { MAX_PLAYERS, MAX_ROAD_LENGTH, MIN_PLAYERS } from '../lib/games/catan/decide';
 import type { CatanEvent } from '../lib/games/catan/events';
 import type { CatanState } from '../lib/games/catan/state';
+import type { PlayEvent } from '../lib/games/catan-play/events';
 import { WINNING_POINTS } from '../lib/games/catan/score';
 import { renderBoard } from './board';
+import { createFeedback, el, type FailureReporter } from './feedback';
 import { iconElement, type IconName } from './icons';
+import { createPlayView } from './play';
 
 const GAME_ID = 'local';
-
-/** Called with every failure the rules did not expect. Set by the page. */
-export type FailureReporter = (error: unknown, context: string) => void;
 
 // ---------------------------------------------------------------- elements
 
@@ -38,36 +38,33 @@ const $ = <T extends Element>(selector: string) => {
 	return node;
 };
 
-function el<K extends keyof HTMLElementTagNameMap>(
-	tag: K,
-	className?: string,
-	text?: string,
-): HTMLElementTagNameMap[K] {
-	const node = document.createElement(tag);
-	if (className) node.className = className;
-	if (text !== undefined) node.textContent = text;
-	return node;
-}
 
 // ---------------------------------------------------------------- storage
 
-/** Browser storage if it works, otherwise memory (and the page says so). */
-function openStore(): { store: EventStore<CatanEvent> & { clear?(id: string): void }; persistent: boolean } {
+type ClearableStore<E> = EventStore<E> & { clear?(id: string): void };
+
+/** Browser storage if it works, otherwise memory (and the page says so). Each mode has its own log. */
+function openStores(): { score: ClearableStore<CatanEvent>; play: ClearableStore<PlayEvent>; persistent: boolean } {
 	try {
 		const probe = 'catan:probe';
 		window.localStorage.setItem(probe, probe);
 		window.localStorage.removeItem(probe);
-		return { store: new LocalStorageEventStore<CatanEvent>(window.localStorage), persistent: true };
+		return {
+			score: new LocalStorageEventStore<CatanEvent>(window.localStorage),
+			play: new LocalStorageEventStore<PlayEvent>(window.localStorage, 'catan-play:events:'),
+			persistent: true,
+		};
 	} catch {
-		return { store: new MemoryEventStore<CatanEvent>(), persistent: false };
+		return { score: new MemoryEventStore<CatanEvent>(), play: new MemoryEventStore<PlayEvent>(), persistent: false };
 	}
 }
 
 // ---------------------------------------------------------------- controller
 
 export function startScoreboard(report: FailureReporter): void {
-	const opened = openStore();
-	let store = opened.store;
+	const opened = openStores();
+	let store = opened.score;
+	let playStore = opened.play;
 	const persistent = opened.persistent;
 	let seed = parseSeed(new URLSearchParams(location.search).get('seed'));
 	if (seed === null || !isValidSeed(seed)) seed = randomSeed();
@@ -95,31 +92,23 @@ export function startScoreboard(report: FailureReporter): void {
 	const newGame = $<HTMLButtonElement>('#new-game');
 	const dialog = $<HTMLDialogElement>('#confirm-new-game');
 	const dialogPlayers = $<HTMLElement>('#confirm-players');
+	const playSection = $<HTMLElement>('#play');
 
 	storageNote.hidden = persistent;
+	const feedback = createFeedback(announcer, failure, report);
+	const announce = (text: string) => feedback.announce(text);
 
-	// ---------------------------------------------------- failure handling
+	const showPlay = () => {
+		loading.hidden = true;
+		setup.hidden = true;
+		game.hidden = true;
+		playSection.hidden = false;
+		newGame.hidden = false;
+	};
+	let play = createPlayView(playStore, feedback, showPlay);
 
-	/** Shows a failure with a retry. The view is redrawn from the store, so it stays consistent. */
-	function showFailure(error: unknown, context: string, retry: () => Promise<void>) {
-		report(error, context);
-		const message = describeFailure(error);
-		const body = el('div', 'notice__body');
-		body.append(el('p', 'notice__title', message.title), el('p', undefined, message.advice));
-		const details = el('details', 'failure__details');
-		details.append(el('summary', undefined, 'Technical details'), el('code', undefined, message.detail));
-		const button = el('button', 'button button--small');
-		button.type = 'button';
-		button.append(iconElement('retry'), document.createTextNode('Try again'));
-		button.addEventListener('click', () => {
-			failure.hidden = true;
-			void retry();
-		});
-		body.append(details, button);
-		failure.replaceChildren(iconElement('alert'), body);
-		failure.hidden = false;
-		button.focus();
-	}
+	const showFailure = (error: unknown, context: string, retry: () => Promise<void>) =>
+		feedback.fail(error, context, retry);
 
 	// ---------------------------------------------------- commands
 
@@ -129,7 +118,7 @@ export function startScoreboard(report: FailureReporter): void {
 	 * Runs one command. Rule violations are shown next to the player; anything
 	 * else is shown as a failure with a retry. Controls are always re-enabled.
 	 */
-	async function run(command: CatanCommand, source?: HTMLButtonElement, feedback?: HTMLElement) {
+	async function run(command: CatanCommand, source?: HTMLButtonElement, note?: HTMLElement) {
 		if (busy) return;
 		busy = true;
 		source?.setAttribute('aria-busy', 'true');
@@ -139,9 +128,9 @@ export function startScoreboard(report: FailureReporter): void {
 			const result = await executeCommand(store, GAME_ID, command);
 			if (!result.ok) {
 				const message = describeViolation(result.error);
-				if (feedback) {
-					feedback.textContent = message;
-					feedback.hidden = false;
+				if (note) {
+					note.textContent = message;
+					note.hidden = false;
 				} else {
 					setupError.textContent = message;
 					setupError.hidden = false;
@@ -149,14 +138,14 @@ export function startScoreboard(report: FailureReporter): void {
 				announce(message);
 				return;
 			}
-			failure.hidden = true;
+			feedback.clearFailure();
 			const log = await store.load(GAME_ID);
 			const added = log.slice(before);
 			const latest = added.at(-1);
 			await render(command.type === 'StartGame' ? undefined : (command as { player?: string }).player);
 			if (latest) announce(`${describeEvent(latest)}.${pointsSuffix(result.value, latest)}`);
 		} catch (error) {
-			showFailure(error, `command:${command.type}`, () => run(command, source, feedback));
+			showFailure(error, `command:${command.type}`, () => run(command, source, note));
 			await render().catch(() => undefined);
 		} finally {
 			busy = false;
@@ -171,12 +160,6 @@ export function startScoreboard(report: FailureReporter): void {
 		const row = buildScoreboard(state).find((r) => r.player === event.player);
 		if (!row) return '';
 		return row.isWinner ? ` ${row.player} wins with ${row.points} points.` : ` ${row.player} has ${row.points} points.`;
-	}
-
-	function announce(text: string) {
-		// Clear first so repeating the same message is still read out.
-		announcer.textContent = '';
-		requestAnimationFrame(() => (announcer.textContent = text));
 	}
 
 	// ---------------------------------------------------- setup screen
@@ -251,7 +234,17 @@ export function startScoreboard(report: FailureReporter): void {
 		const inputs = [...nameList.querySelectorAll<HTMLInputElement>('input')];
 		const names = parsePlayerNames(inputs.map((input) => input.value));
 		const submit = setupForm.querySelector<HTMLButtonElement>('button[type="submit"]') ?? undefined;
-		void run({ type: 'StartGame', players: names, seed: seed ?? undefined }, submit).then(() => {
+		const mode = new FormData(setupForm).get('mode') === 'score' ? 'score' : 'play';
+		const started =
+			mode === 'play'
+				? play.start(names, seed ?? 0).then((message) => {
+						if (message) {
+							setupError.textContent = message;
+							setupError.hidden = false;
+						}
+					})
+				: run({ type: 'StartGame', players: names, seed: seed ?? undefined }, submit);
+		void started.then(() => {
 			if (setupError.hidden) return;
 			// Point at the field to fix: a repeated name, else the first empty field.
 			const seen = new Set<string>();
@@ -376,6 +369,11 @@ export function startScoreboard(report: FailureReporter): void {
 
 	/** Draws whichever screen the stored log implies. `changedPlayer` is highlighted briefly. */
 	async function render(changedPlayer?: string) {
+		if (await play.isActive()) {
+			await play.render();
+			return;
+		}
+		playSection.hidden = true;
 		const state = await loadGame(store, GAME_ID);
 		const log = await store.load(GAME_ID);
 		loading.hidden = true;
@@ -419,8 +417,11 @@ export function startScoreboard(report: FailureReporter): void {
 	// ---------------------------------------------------- new game
 
 	newGame.addEventListener('click', async () => {
-		const state = await loadGame(store, GAME_ID).catch(() => null);
-		dialogPlayers.textContent = state?.playerOrder.join(', ') || 'this game';
+		const playing = await play.isActive().catch(() => false);
+		const names = playing
+			? await play.players()
+			: ((await loadGame(store, GAME_ID).catch(() => null))?.playerOrder ?? []);
+		dialogPlayers.textContent = names.join(', ') || 'this game';
 		dialog.showModal();
 	});
 
@@ -428,9 +429,14 @@ export function startScoreboard(report: FailureReporter): void {
 		if (dialog.returnValue !== 'discard') return;
 		try {
 			store.clear?.(GAME_ID);
-			if (!persistent) store = new MemoryEventStore<CatanEvent>();
+			play.clear();
+			if (!persistent) {
+				store = new MemoryEventStore<CatanEvent>();
+				playStore = new MemoryEventStore<PlayEvent>();
+				play = createPlayView(playStore, feedback, showPlay);
+			}
 			seed = randomSeed();
-			failure.hidden = true;
+			feedback.clearFailure();
 			void render().then(() => {
 				nameList.querySelector('input')?.focus();
 				announce('The game was discarded. Enter players to start a new one.');
@@ -457,7 +463,7 @@ export function startScoreboard(report: FailureReporter): void {
 
 	// Re-render if another tab changes the saved game.
 	window.addEventListener('storage', (event) => {
-		if (event.key?.startsWith('catan:events:')) void boot();
+		if (event.key?.startsWith('catan:events:') || event.key?.startsWith('catan-play:events:')) void boot();
 	});
 }
 

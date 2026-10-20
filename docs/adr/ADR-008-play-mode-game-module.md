@@ -38,7 +38,12 @@ The robber, development cards, ports and player trades are later issues.
    1–6. This keeps `decide` and `evolve` pure and makes a stored game replay
    exactly. Production, starting resources and turn order are derived in
    `evolve`, never stored.
-6. **One log per mode.** Each mode has its own event log in browser storage, so
+6. **The UI only draws what the queries allow.** Legal corners and edges are
+   drawn as keyboard-focusable buttons on the board; build buttons show the cost
+   and, when disabled, what is missing (from `buildOptions`). Play mode reuses
+   the scoreboard's failure handling, error reporting and confirmation dialog
+   (`src/ui/feedback.ts`). The controller is `src/ui/play.ts`.
+7. **One log per mode.** Each mode has its own event log in browser storage, so
    the two never mix and either can be discarded alone.
 
 ## Consequences

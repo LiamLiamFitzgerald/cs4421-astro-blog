@@ -86,3 +86,8 @@ export function boardView(board: Board, size = 50): BoardView {
     sea: polygon(0, 0, seaRadius, 0),
   };
 }
+
+/** Where a board corner is drawn, for hexes of radius `size` (matches boardView). */
+export function cornerPoint(vertex: { x: number; y: number }, size = 50): { x: number; y: number } {
+  return { x: round((vertex.x * size * SQRT3) / 2), y: round((vertex.y * size) / 2) };
+}
