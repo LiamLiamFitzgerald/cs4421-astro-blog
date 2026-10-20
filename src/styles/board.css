@@ -1,0 +1,56 @@
+/* The board: the one colourful, prominent element. Colours come from tokens.css. */
+.board {
+	display: block;
+	width: 100%;
+	height: auto;
+	font-family: var(--font-heading);
+	font-variant-numeric: lining-nums;
+}
+.board__sea {
+	fill: var(--color-sea);
+	stroke: var(--color-sea-deep);
+	stroke-width: 6;
+	stroke-linejoin: round;
+}
+.board__tile {
+	stroke: rgb(43 36 25 / 0.35);
+	stroke-width: 1.5;
+	stroke-linejoin: round;
+}
+.board__hex--forest .board__tile { fill: var(--terrain-forest); }
+.board__hex--pasture .board__tile { fill: var(--terrain-pasture); }
+.board__hex--fields .board__tile { fill: var(--terrain-fields); }
+.board__hex--hills .board__tile { fill: var(--terrain-hills); }
+.board__hex--mountains .board__tile { fill: var(--terrain-mountains); }
+.board__hex--desert .board__tile { fill: var(--terrain-desert); }
+.board__glyph {
+	fill: rgb(20 20 10 / 0.22);
+	stroke: rgb(20 20 10 / 0.22);
+	stroke-width: 1.4;
+	stroke-linecap: round;
+}
+.board__hex--pasture .board__glyph,
+.board__hex--fields .board__glyph,
+.board__hex--desert .board__glyph {
+	fill: none;
+}
+.board__token {
+	fill: var(--color-token);
+	stroke: rgb(43 36 25 / 0.45);
+	stroke-width: 1;
+}
+.board__number {
+	font-size: 17px;
+	font-weight: 700;
+	text-anchor: middle;
+	fill: var(--color-ink);
+}
+.board__number--red {
+	fill: var(--color-token-red);
+}
+.board__pip {
+	fill: var(--color-ink);
+}
+.board__pip--red {
+	fill: var(--color-token-red);
+}

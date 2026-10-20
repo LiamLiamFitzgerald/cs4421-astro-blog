@@ -8,4 +8,5 @@ export type RuleViolation =
   | { readonly code: "INVALID_PLAYERS"; readonly reason: string }
   | { readonly code: "UNKNOWN_PLAYER"; readonly player: PlayerId }
   | { readonly code: "NO_SETTLEMENT_TO_UPGRADE"; readonly player: PlayerId }
-  | { readonly code: "INVALID_ROAD_LENGTH"; readonly length: number };
+  | { readonly code: "INVALID_ROAD_LENGTH"; readonly length: number }
+  | { readonly code: "INVALID_SEED"; readonly seed: number };

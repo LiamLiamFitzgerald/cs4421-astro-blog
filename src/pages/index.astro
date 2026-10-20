@@ -1,49 +1,200 @@
 ---
-import BaseHead from '../components/BaseHead.astro';
-import Footer from '../components/Footer.astro';
-import Header from '../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
+import Icon from '../components/Icon.astro';
+import { REPO_URL } from '../consts';
+import Layout from '../layouts/Layout.astro';
+import '../styles/board.css';
+
+const adr = (file: string) => `${REPO_URL}/blob/develop/docs/adr/${file}.md`;
+
+const practices = [
+	{
+		title: 'Every action is an event',
+		body: 'Scores, awards and the winner are worked out by replaying the game’s event log, so nothing can drift out of sync.',
+		href: adr('ADR-003-event-sourced-game-core'),
+		ref: 'ADR-003',
+	},
+	{
+		title: 'Rules that cannot leak',
+		body: 'The game rules know nothing about the browser or storage, and CI fails if code depends in the wrong direction.',
+		href: adr('ADR-004-layered-architecture-and-dependency-rules'),
+		ref: 'ADR-004',
+	},
+	{
+		title: 'Checked on every change',
+		body: 'Unit and property-based tests, mutation testing, and a browser test that plays a game before anything merges.',
+		href: adr('ADR-005-verification-strategy'),
+		ref: 'ADR-005',
+	},
+	{
+		title: 'Shipped as a container',
+		body: 'A server-rendered app with a health check and JSON logs, defined as infrastructure code for AWS Fargate.',
+		href: adr('ADR-001-transition-to-ssr-and-containers'),
+		ref: 'ADR-001',
+	},
+	{
+		title: 'Released from history',
+		body: 'GitFlow branches and Conventional Commits, so versions and the changelog are generated, not written by hand.',
+		href: adr('ADR-002-gitflow-branching-model'),
+		ref: 'ADR-002',
+	},
+	{
+		title: 'One design system',
+		body: 'Every page shares the same colours, type, controls and messages, defined once as tokens and components.',
+		href: adr('ADR-007-design-system'),
+		ref: 'ADR-007',
+	},
+];
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-	</head>
-	<body>
-		<Header />
-		<main>
-			<h1>🧑‍🚀 Hello, Astronaut!</h1>
-			<p>
-				Welcome to the official <a href="https://astro.build/">Astro</a> blog starter template. This template
-				serves as a lightweight, minimally-styled starting point for anyone looking to build a personal
-				website, blog, or portfolio with Astro.
+<Layout>
+	<section class="hero" aria-labelledby="hero-title">
+		<div class="hero__text">
+			<h1 id="hero-title">Deal a fair board, then keep score.</h1>
+			<p class="hero__lede">
+				Every board follows the base-game rules, with no 6 or 8 side by side. Record settlements,
+				cities, knights and roads as you play, and the scoreboard works out the awards and the
+				winner.
 			</p>
-			<p>
-				This template comes with a few integrations already configured in your
-				<code>astro.config.mjs</code> file. You can customize your setup with
-				<a href="https://astro.build/integrations">Astro Integrations</a> to add tools like Tailwind,
-				React, or Vue to your project.
-			</p>
-			<p>Here are a few ideas on how to get started with the template:</p>
-			<ul>
-				<li>Edit this page in <code>src/pages/index.astro</code></li>
-				<li>Edit the site header items in <code>src/components/Header.astro</code></li>
-				<li>Add your name to the footer in <code>src/components/Footer.astro</code></li>
-				<li>Check out the included blog posts in <code>src/content/blog/</code></li>
-				<li>Customize the blog post page layout in <code>src/layouts/BlogPost.astro</code></li>
-			</ul>
-			<p>
-				Have fun! If you get stuck, remember to
-				<a href="https://docs.astro.build/">read the docs</a>
-				or <a href="https://astro.build/chat">join us on Discord</a> to ask questions.
-			</p>
-			<p>
-				Looking for a blog template with a bit more personality? Check out
-				<a href="https://github.com/Charca/astro-blog-template">astro-blog-template</a>
-				by <a href="https://twitter.com/Charca">Maxi Ferreira</a>.
-			</p>
-		</main>
-		<Footer />
-	</body>
-</html>
+			<div class="hero__actions">
+				<a class="button button--primary" href="/catan" id="start-link">
+					<Icon name="plus" />
+					Start a game on this board
+				</a>
+				<button class="button" type="button" id="deal" disabled>
+					<Icon name="dice" />
+					Deal another board
+				</button>
+			</div>
+		</div>
+		<figure class="hero__board">
+			<svg class="board" id="board" aria-labelledby="board-caption"></svg>
+			<figcaption id="board-caption" class="hint">
+				A random board. <span id="board-balance"></span>
+			</figcaption>
+			<ol class="sr-only" id="board-list" aria-label="Hexes on this board"></ol>
+			<noscript><p class="hint">Turn on JavaScript to deal a board.</p></noscript>
+		</figure>
+	</section>
+
+	<section class="practices" aria-labelledby="practices-title">
+		<h2 id="practices-title">How it is built</h2>
+		<p class="muted">
+			The scoreboard is small on purpose. The project is the engineering around it, so that it can
+			be maintained and extended safely.
+		</p>
+		<dl class="practices__list">
+			{
+				practices.map((p) => (
+					<div class="practices__item">
+						<dt>{p.title}</dt>
+						<dd>
+							{p.body} <a href={p.href}>Read {p.ref}</a>
+						</dd>
+					</div>
+				))
+			}
+		</dl>
+	</section>
+</Layout>
+
+<script>
+	import { generateBoard, MAX_SEED } from '../lib/games/catan/board';
+	import { renderBoard } from '../ui/board';
+
+	const svg = document.getElementById('board') as unknown as SVGSVGElement;
+	const list = document.getElementById('board-list') as HTMLOListElement;
+	const deal = document.getElementById('deal') as HTMLButtonElement;
+	const start = document.getElementById('start-link') as HTMLAnchorElement;
+	const balance = document.getElementById('board-balance') as HTMLSpanElement;
+
+	function show(seed: number) {
+		const board = generateBoard(seed);
+		renderBoard(svg, board, list);
+		// Hand the same board to the scoreboard, so "start on this board" means it.
+		start.href = `/catan?seed=${seed}`;
+		const desert = board.hexes.find((hex) => hex.terrain === 'desert');
+		balance.textContent =
+			desert && desert.q === 0 && desert.r === 0
+				? 'The desert is in the centre.'
+				: 'Red numbers are never next to each other.';
+	}
+
+	const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] ?? Math.floor(Math.random() * MAX_SEED);
+
+	show(randomSeed());
+	deal.disabled = false;
+	deal.addEventListener('click', () => show(randomSeed()));
+</script>
+
+<style>
+	.hero {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+		align-items: center;
+		gap: var(--space-6);
+		margin-bottom: var(--space-8);
+	}
+	.hero h1 {
+		font-size: clamp(var(--text-2xl), 4.2vw, 3.05rem);
+		max-width: 17ch;
+	}
+	.hero__lede {
+		font-size: var(--text-l);
+		color: var(--color-ink-muted);
+		max-width: 34ch;
+	}
+	.hero__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		margin-top: var(--space-5);
+	}
+	.hero__board {
+		margin: 0;
+	}
+	.hero__board .board {
+		max-width: 34rem;
+		margin: 0 auto;
+		filter: drop-shadow(0 10px 18px rgb(43 36 25 / 0.18));
+	}
+	.hero__board figcaption {
+		text-align: center;
+		margin-top: var(--space-2);
+	}
+	.practices {
+		border-top: 1px solid var(--color-line);
+		padding-top: var(--space-6);
+	}
+	.practices__list {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-5) var(--space-7);
+		margin: var(--space-5) 0 0;
+	}
+	.practices__item dt {
+		font-family: var(--font-heading);
+		font-size: var(--text-l);
+		font-weight: 700;
+		margin-bottom: var(--space-1);
+	}
+	.practices__item dd a {
+		white-space: nowrap;
+	}
+	.practices__item dd {
+		margin: 0;
+		color: var(--color-ink-muted);
+		max-width: 46ch;
+	}
+	@media (max-width: 52rem) {
+		.hero {
+			grid-template-columns: 1fr;
+			gap: var(--space-4);
+		}
+		.hero__board {
+			order: -1;
+		}
+		.practices__list {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>
