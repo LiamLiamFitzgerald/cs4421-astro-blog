@@ -1,0 +1,374 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead title="Catan scoreboard" description="Event-sourced Catan scorekeeper" />
+	</head>
+	<body>
+		<Header />
+		<main class="catan">
+			<section id="setup" class="setup">
+				<h1>Catan scoreboard</h1>
+				<p class="lede">
+					Every button records an event. Scores, awards and the winner are replayed from the log.
+				</p>
+				<form id="setup-form">
+					<label for="names">Players (2–6, comma separated)</label>
+					<input id="names" name="names" value="Ana, Ben, Cara" autocomplete="off" />
+					<button type="submit" class="primary">Start game</button>
+				</form>
+			</section>
+
+			<section id="game" hidden>
+				<div class="topbar">
+					<h1>Catan scoreboard</h1>
+					<button id="new-game" type="button" class="ghost">New game</button>
+				</div>
+				<p id="message" class="message" role="status" aria-live="polite"></p>
+				<div id="players" class="players"></div>
+				<details class="history" open>
+					<summary>Event log <span id="event-count"></span></summary>
+					<ol id="events"></ol>
+				</details>
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<script>
+	import { MemoryEventStore } from '../lib/adapters/memory-event-store';
+	import { executeCommand, loadGame } from '../lib/app/catan-service';
+	import { buildScoreboard, describeEvent, describeViolation } from '../lib/app/scoreboard';
+	import type { CatanCommand } from '../lib/games/catan/commands';
+	import type { CatanEvent } from '../lib/games/catan/events';
+	import { MAX_ROAD_LENGTH } from '../lib/games/catan/decide';
+	import { WINNING_POINTS } from '../lib/games/catan/score';
+
+	const GAME_ID = 'local';
+	let store = new MemoryEventStore<CatanEvent>();
+
+	const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+	const setup = byId('setup');
+	const game = byId('game');
+	const message = byId('message');
+	const playersEl = byId('players');
+	const eventsEl = byId('events');
+	const eventCount = byId('event-count');
+
+	function el<K extends keyof HTMLElementTagNameMap>(
+		tag: K,
+		className?: string,
+		text?: string,
+	): HTMLElementTagNameMap[K] {
+		const node = document.createElement(tag);
+		if (className) node.className = className;
+		if (text !== undefined) node.textContent = text;
+		return node;
+	}
+
+	async function run(command: CatanCommand) {
+		const result = await executeCommand(store, GAME_ID, command);
+		message.textContent = result.ok ? '' : describeViolation(result.error);
+		await render();
+	}
+
+	function actionButton(label: string, command: CatanCommand, disabled: boolean) {
+		const button = el('button', 'action', label);
+		button.type = 'button';
+		button.disabled = disabled;
+		button.addEventListener('click', () => void run(command));
+		return button;
+	}
+
+	async function render() {
+		const state = await loadGame(store, GAME_ID);
+		const log = await store.load(GAME_ID);
+		setup.hidden = state.started;
+		game.hidden = !state.started;
+		if (!state.started) return;
+
+		const over = state.winner !== null;
+		playersEl.replaceChildren(
+			...buildScoreboard(state).map((row, index) => {
+				const card = el('article', `player seat-${index % 6}${row.isWinner ? ' winner' : ''}`);
+
+				const head = el('header');
+				head.append(el('h2', undefined, row.player));
+				const badges = el('div', 'badges');
+				if (row.hasLargestArmy) badges.append(el('span', 'badge', '⚔ Largest Army'));
+				if (row.hasLongestRoad) badges.append(el('span', 'badge', '🛤 Longest Road'));
+				if (row.isWinner) badges.append(el('span', 'badge crown', '👑 Winner'));
+				head.append(badges);
+
+				const score = el('div', 'score');
+				score.append(el('strong', undefined, String(row.points)));
+				score.append(el('span', undefined, `/ ${WINNING_POINTS} VP`));
+
+				const stats = el('dl', 'stats');
+				const stat = (name: string, value: number) => {
+					const wrap = el('div');
+					wrap.append(el('dt', undefined, name), el('dd', undefined, String(value)));
+					stats.append(wrap);
+				};
+				stat('Settlements', row.settlements);
+				stat('Cities', row.cities);
+				stat('VP cards', row.victoryPointCards);
+				stat('Knights', row.knights);
+				stat('Road', row.roadLength);
+
+				const actions = el('div', 'actions');
+				const player = row.player;
+				actions.append(
+					actionButton('+ Settlement', { type: 'BuildSettlement', player }, over),
+					actionButton('→ City', { type: 'UpgradeSettlement', player }, over),
+					actionButton('+ VP card', { type: 'RevealVictoryPointCard', player }, over),
+					actionButton('+ Knight', { type: 'PlayKnight', player }, over),
+				);
+
+				const road = el('form', 'road');
+				const input = el('input');
+				input.type = 'number';
+				input.min = '0';
+				input.max = String(MAX_ROAD_LENGTH);
+				input.value = String(row.roadLength);
+				input.setAttribute('aria-label', `${player} road length`);
+				const set = el('button', 'action', 'Set road');
+				set.type = 'submit';
+				set.disabled = over;
+				road.append(input, set);
+				road.addEventListener('submit', (event) => {
+					event.preventDefault();
+					void run({ type: 'RecordRoadLength', player, length: Number(input.value) });
+				});
+				actions.append(road);
+
+				card.append(head, score, stats, actions);
+				return card;
+			}),
+		);
+
+		eventsEl.replaceChildren(
+			...[...log].reverse().map((event) => el('li', undefined, describeEvent(event))),
+		);
+		eventCount.textContent = `(${log.length})`;
+	}
+
+	byId<HTMLFormElement>('setup-form').addEventListener('submit', (event) => {
+		event.preventDefault();
+		const names = byId<HTMLInputElement>('names')
+			.value.split(',')
+			.map((name) => name.trim())
+			.filter((name) => name !== '');
+		void run({ type: 'StartGame', players: names }).then(() => {
+			// A refused start (e.g. one player) is shown on the setup screen.
+			if (message.textContent) {
+				setup.hidden = false;
+				game.hidden = true;
+				byId('names').setAttribute('aria-invalid', 'true');
+			}
+		});
+	});
+
+	byId('new-game').addEventListener('click', () => {
+		store = new MemoryEventStore<CatanEvent>();
+		message.textContent = '';
+		void render();
+	});
+</script>
+
+<style is:global>
+	main.catan {
+		width: 1040px;
+		max-width: calc(100% - 2em);
+		padding-top: 2em;
+	}
+	/* Global because the cards are created by the script, which scoped CSS cannot reach. */
+	.catan {
+		h1 {
+			margin-bottom: 0.2em;
+		}
+		.lede {
+			color: rgb(var(--gray));
+			margin-top: 0;
+		}
+		.setup {
+			max-width: 520px;
+			margin: 3em auto;
+		}
+		.setup form {
+			display: grid;
+			gap: 0.6em;
+			margin-top: 1.5em;
+		}
+		input {
+			font: inherit;
+			padding: 0.5em 0.7em;
+			border: 1px solid rgb(var(--gray-light));
+			border-radius: 8px;
+			background: #fff;
+			color: inherit;
+		}
+		input[aria-invalid='true'] {
+			border-color: #c0392b;
+		}
+		button {
+			font: inherit;
+			font-size: 0.8em;
+			cursor: pointer;
+			border-radius: 8px;
+			border: 1px solid rgb(var(--gray-light));
+			background: #fff;
+			color: rgb(var(--gray-dark));
+			padding: 0.35em 0.8em;
+			transition: transform 0.08s, background 0.15s, border-color 0.15s;
+		}
+		button:hover:not(:disabled) {
+			border-color: var(--accent);
+			transform: translateY(-1px);
+		}
+		button:disabled {
+			opacity: 0.4;
+			cursor: not-allowed;
+		}
+		button.primary {
+			background: var(--accent);
+			border-color: var(--accent);
+			color: #fff;
+			font-size: 1em;
+			padding: 0.55em 1em;
+		}
+		button.ghost {
+			background: transparent;
+		}
+		.topbar {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+		.message {
+			min-height: 1.7em;
+			margin: 0.4em 0 1em;
+			color: #b03a2e;
+			font-size: 0.9em;
+		}
+		.players {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+			gap: 1.1em;
+		}
+		.player {
+			--seat: #888;
+			position: relative;
+			background: #fff;
+			border-radius: 14px;
+			padding: 1em 1.1em 1.1em;
+			border-top: 6px solid var(--seat);
+			box-shadow: var(--box-shadow);
+		}
+		.seat-0 { --seat: #c0392b; }
+		.seat-1 { --seat: #2e6bd6; }
+		.seat-2 { --seat: #e08a1e; }
+		.seat-3 { --seat: #2f9e63; }
+		.seat-4 { --seat: #8e44ad; }
+		.seat-5 { --seat: #6b7a8f; }
+		.player.winner {
+			outline: 3px solid #e0b100;
+		}
+		.player header {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			justify-content: space-between;
+			gap: 0.4em;
+		}
+		.player h2 {
+			font-size: 1.3em;
+			margin: 0;
+			color: var(--seat);
+		}
+		.badges {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.3em;
+		}
+		.badge {
+			font-size: 0.65em;
+			padding: 0.1em 0.6em;
+			border-radius: 999px;
+			background: rgb(var(--gray-light));
+			white-space: nowrap;
+		}
+		.badge.crown {
+			background: #fbe9a8;
+		}
+		.score {
+			display: flex;
+			align-items: baseline;
+			gap: 0.4em;
+			margin: 0.3em 0;
+		}
+		.score strong {
+			font-size: 3em;
+			line-height: 1;
+			color: var(--seat);
+		}
+		.score span {
+			color: rgb(var(--gray));
+			font-size: 0.8em;
+		}
+		.stats {
+			display: grid;
+			grid-template-columns: repeat(5, 1fr);
+			margin: 0.4em 0 0.9em;
+			text-align: center;
+		}
+		.stats dt {
+			font-size: 0.55em;
+			color: rgb(var(--gray));
+			text-transform: uppercase;
+			letter-spacing: 0.04em;
+			line-height: 1.2;
+		}
+		.stats dd {
+			margin: 0;
+			font-size: 1.15em;
+			font-weight: 600;
+		}
+		.actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.4em;
+		}
+		.road {
+			display: flex;
+			gap: 0.4em;
+			width: 100%;
+		}
+		.road input {
+			width: 4.5em;
+			padding: 0.25em 0.5em;
+			font-size: 0.8em;
+		}
+		.history {
+			margin-top: 2em;
+			font-size: 0.8em;
+		}
+		.history summary {
+			cursor: pointer;
+			font-weight: 600;
+		}
+		.history ol {
+			margin: 0.6em 0 0;
+			padding-left: 1.6em;
+			max-height: 260px;
+			overflow-y: auto;
+			color: rgb(var(--gray));
+		}
+	}
+</style>

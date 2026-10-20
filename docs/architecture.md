@@ -91,3 +91,4 @@ rules, all gated in CI. See [ADR-005](adr/ADR-005-verification-strategy.md).
 - [ADR-003](adr/ADR-003-event-sourced-game-core.md): event-sourced game core
 - [ADR-004](adr/ADR-004-layered-architecture-and-dependency-rules.md): layers and enforced dependency rules
 - [ADR-005](adr/ADR-005-verification-strategy.md): verification strategy
+- [ADR-006](adr/ADR-006-scoreboard-ui-approach.md): scoreboard UI approach
