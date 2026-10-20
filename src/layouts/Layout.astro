@@ -25,5 +25,10 @@ const fullTitle = title ? `${title} – ${SITE_TITLE}` : SITE_TITLE;
 			<slot />
 		</main>
 		<Footer />
+		<script>
+			import { reportUncaughtErrors } from '../ui/report-error';
+
+			reportUncaughtErrors();
+		</script>
 	</body>
 </html>

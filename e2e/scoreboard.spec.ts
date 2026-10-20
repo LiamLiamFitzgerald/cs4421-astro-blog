@@ -194,7 +194,17 @@ test.describe("Feature: unexpected failures", () => {
         throw new DOMException("Quota exceeded", "QuotaExceededError");
       };
     });
+    const reported = page.waitForResponse((r) => r.url().endsWith("/api/client-errors"));
     await ana.getByRole("button", { name: "Settlement" }).click();
+
+    // The failure is sent to the server log as well as shown.
+    const report = await reported;
+    expect(report.status()).toBe(204);
+    expect(report.request().postDataJSON()).toMatchObject({
+      context: "command:BuildSettlement",
+      name: "QuotaExceededError",
+      page: "/catan",
+    });
 
     const failure = page.locator("#failure");
     await expect(failure).toContainText("browser storage is full");

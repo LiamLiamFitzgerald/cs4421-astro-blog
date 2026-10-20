@@ -68,11 +68,15 @@ Workflow: `.github/workflows/ci.yml` (name `CI`, job `validate`), run on pull
 requests into `main` and `develop`, on Node 22:
 
 1. `npm ci`
-2. `npm run lint`: ESLint
-3. `npm run check`: `astro check` (type check)
-4. `npm run arch`: dependency-cruiser checks the layer rules in
+2. Commit messages are checked with commitlint (Conventional Commits)
+3. `npm run lint`: ESLint
+4. `npm run check`: `astro check` (type check)
+5. `npm run arch`: dependency-cruiser checks the layer rules in
    `.dependency-cruiser.cjs` (see ADR-004)
-5. `npm run test:unit`: Vitest
+6. `npm run test:unit`: Vitest (unit, BDD-style and property-based tests)
+7. `npm run build`, then `npm run test:e2e`: Playwright plays the scoreboard in
+   Chromium against the production server; the report is uploaded on failure
+8. The container image is built, and the CDK app is tested and synthesised
 
 Mutation testing (`npm run test:mutation`, Stryker) is slow, so it runs weekly and
 on demand in `.github/workflows/mutation.yml`, not on every PR. It fails below a
@@ -88,7 +92,13 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - `npm run build` then `node dist/server/entry.mjs` (set `PORT` and `HOST`).
 - `GET /api/health` returns `{ status, uptime, timestamp }`.
 - Every request writes one JSON log line to stdout (timestamp, level, route,
-  method, statusCode, latencyMs).
+  method, statusCode, latencyMs). An unhandled server error also writes an
+  `"unhandled server error"` line with the error name and message.
+- Unexpected errors in visitors' browsers are sent to `POST /api/client-errors`
+  and logged at level `error` with `"message":"client error"`, `context`,
+  `errorName`, `errorMessage` and `page`. To find them, filter the logs (or
+  CloudWatch) for `"client error"`. Reports are validated and capped at 4 KB;
+  a page sends at most ten.
 - `docker build -t catan-app .` builds the production image; CI builds it too.
 - Production runs on ECS Fargate (`cdk/lib/app-service-stack.ts`): an ALB with
   CloudFront in front, health-checked on `/api/health`, with a circuit breaker
@@ -137,11 +147,23 @@ describe('Feature: base victory points', () => {
 
 Write the test from the acceptance criteria first, then the implementation.
 
+- Unit tests sit next to the code (`*.test.ts`); domain rules also get
+  property-based tests with fast-check.
+- Browser behaviour is tested in `e2e/` with Playwright, against the built
+  server (`npm run build && npm run test:e2e`). Locally, set
+  `PLAYWRIGHT_CHROMIUM_PATH` to use an installed Chromium, or run
+  `npx playwright install chromium` once.
+- Every user-visible failure path (refused command, storage failure, blocked
+  storage) has an e2e test.
+
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `src/` | Astro site (pages, components, content) |
+| `src/lib/` | Game core, app layer, adapters and observability (no DOM) |
+| `src/ui/` | Browser code: board drawing, icons, scoreboard controller, error reporting |
+| `src/pages/`, `src/components/`, `src/layouts/`, `src/styles/` | Routes, shared components and the design system |
+| `e2e/` | Playwright browser tests |
 | `cdk/` | AWS CDK (TypeScript) infrastructure app |
 | `docs/adr/` | Architecture decision records |
 | `docs/retrospectives/` | Sprint retrospectives |

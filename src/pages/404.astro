@@ -1,0 +1,49 @@
+---
+import Icon from '../components/Icon.astro';
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Page not found" description="This page does not exist.">
+	<section class="not-found">
+		<svg viewBox="0 0 120 104" class="not-found__mark" aria-hidden="true">
+			<path d="M30 2h60l30 50-30 50H30L0 52Z" />
+		</svg>
+		<h1>This page is not on the map</h1>
+		<p class="muted">
+			The address may be mistyped, or the page may have moved. Your saved game is not affected.
+		</p>
+		<div class="not-found__actions">
+			<a class="button button--primary" href="/catan">
+				<Icon name="dice" />
+				Go to the scoreboard
+			</a>
+			<a class="button" href="/">Back to the home page</a>
+		</div>
+	</section>
+</Layout>
+
+<style>
+	.not-found {
+		display: grid;
+		justify-items: center;
+		text-align: center;
+		padding: var(--space-7) 0;
+	}
+	.not-found p {
+		margin-inline: auto;
+	}
+	.not-found__mark {
+		width: 5rem;
+		margin-bottom: var(--space-4);
+		fill: var(--terrain-desert);
+		stroke: var(--color-line-strong);
+		stroke-width: 3;
+	}
+	.not-found__actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: var(--space-3);
+		margin-top: var(--space-3);
+	}
+</style>
