@@ -42,6 +42,7 @@ import Header from '../components/Header.astro';
 </html>
 
 <script>
+	import { LocalStorageEventStore } from '../lib/adapters/local-storage-event-store';
 	import { MemoryEventStore } from '../lib/adapters/memory-event-store';
 	import { executeCommand, loadGame } from '../lib/app/catan-service';
 	import { buildScoreboard, describeEvent, describeViolation } from '../lib/app/scoreboard';
@@ -51,7 +52,23 @@ import Header from '../components/Header.astro';
 	import { WINNING_POINTS } from '../lib/games/catan/score';
 
 	const GAME_ID = 'local';
-	let store = new MemoryEventStore<CatanEvent>();
+
+	// Composition root: the only place that picks an adapter (ADR-004, ADR-006).
+	// Browser storage keeps the game across reloads; if it is blocked (some
+	// private modes), fall back to memory so the page still works.
+	function browserStorage(): Storage | null {
+		try {
+			const probe = 'catan:probe';
+			window.localStorage.setItem(probe, probe);
+			window.localStorage.removeItem(probe);
+			return window.localStorage;
+		} catch {
+			return null;
+		}
+	}
+	const storage = browserStorage();
+	const newStore = () => (storage ? new LocalStorageEventStore<CatanEvent>(storage) : new MemoryEventStore<CatanEvent>());
+	let store = newStore();
 
 	const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 	const setup = byId('setup');
@@ -175,8 +192,11 @@ import Header from '../components/Header.astro';
 		});
 	});
 
+	void render();
+
 	byId('new-game').addEventListener('click', () => {
-		store = new MemoryEventStore<CatanEvent>();
+		if (store instanceof LocalStorageEventStore) store.clear(GAME_ID);
+		store = newStore();
 		message.textContent = '';
 		void render();
 	});

@@ -37,7 +37,8 @@ winner, show why a command was refused, and list the event log.
    cannot reach elements created by the script, so scoped CSS left the cards
    unstyled. The page reuses the template's colour variables and has no dark
    theme, matching the rest of the site.
-7. **Game state is not persisted yet.** A reload starts a new game.
+7. **Games are kept in browser storage** (`LocalStorageEventStore`, #71), falling
+   back to memory if storage is blocked. Nothing is stored on the server.
 
 ## Consequences
 
@@ -50,10 +51,11 @@ winner, show why a command was refused, and list the event log.
   the page grows, and is a reasonable follow-up issue.
 - Hand-written DOM code gets verbose as screens multiply. If the UI grows past a
   few views, adopt a framework island at that point, with this ADR superseded.
-- Because state lives only in the browser tab, the server's health endpoint and
-  logs say nothing about games. A persistent adapter (browser storage or
-  DynamoDB, as noted in ADR-001) is needed before the data matters. The
-  `EventStore` port makes that a swap in the composition root.
+- Because games live only in the visitor's browser, the server's health endpoint
+  and logs say nothing about them, and a game cannot move between devices. A
+  server-side adapter (for example DynamoDB, as noted in ADR-001) is needed
+  before the data matters. The `EventStore` port makes that a swap in the
+  composition root.
 - The event store is append-only, so the page has no undo button even though
   `undo` exists in `history.ts`. Supporting it needs a store operation for
   truncating a log, which is a deliberate design decision of its own.
