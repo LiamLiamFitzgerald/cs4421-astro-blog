@@ -29,3 +29,7 @@ node_modules/
 # mutation testing
 .stryker-tmp/
 reports/
+
+# Playwright
+playwright-report/
+test-results/
