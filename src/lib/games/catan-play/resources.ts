@@ -43,10 +43,6 @@ export function missing(h: Hand, cost: Hand): Hand {
   return hand(Object.fromEntries(RESOURCES.map((r) => [r, Math.max(0, cost[r] - h[r])])));
 }
 
-export function canAfford(h: Hand, cost: Hand): boolean {
-  return handSize(missing(h, cost)) === 0;
-}
-
 export type Piece = "road" | "settlement" | "city";
 
 /** What each piece costs. */

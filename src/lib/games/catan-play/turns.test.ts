@@ -125,11 +125,29 @@ describe("Feature: production", () => {
   };
   const token = producing?.token ?? 0;
 
-  it("given a settlement and a city on a hex with the rolled number, they get 1 and 2", () => {
-    const { produced, shortages } = production(base, token);
-    expect(produced.ana?.[resource]).toBeGreaterThanOrEqual(1);
-    expect(produced.ben?.[resource]).toBeGreaterThanOrEqual(2);
+  it("given a settlement and a city on a hex with the rolled number, they get exactly 1 and 2", () => {
+    // Only this hex: other hexes with the same number must not add to the count.
+    const single: PlayState = { ...base, board: { hexes: board.hexes.filter((h) => h === producing) } };
+    const { produced, shortages } = production(single, token);
+    expect(produced.ana).toEqual(hand({ [resource]: 1 }));
+    expect(produced.ben).toEqual(hand({ [resource]: 2 }));
     expect(shortages).toEqual([]);
+  });
+
+  it.each([
+    ["forest", "lumber"],
+    ["hills", "brick"],
+    ["pasture", "wool"],
+    ["fields", "grain"],
+    ["mountains", "ore"],
+  ] as const)("given %s, it produces %s", (terrain, produces) => {
+    const corner = TOPOLOGY.hexCorners["0,0"]?.[0] ?? 0;
+    const one: PlayState = {
+      ...base,
+      board: { hexes: [{ q: 0, r: 0, terrain, token: 9 }] },
+      buildings: { [corner]: { player: "ana", kind: "settlement" } },
+    };
+    expect(production(one, 9).produced.ana).toEqual(hand({ [produces]: 1 }));
   });
 
   it("given a number no hex shows next to them, nothing is produced", () => {

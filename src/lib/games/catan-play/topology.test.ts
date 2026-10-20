@@ -13,6 +13,20 @@ describe("Feature: corners and edges of the base board", () => {
       expect(edges).toHaveLength(72);
     });
 
+    it("numbers corners top to bottom, then left to right", () => {
+      for (let i = 1; i < vertices.length; i++) {
+        const [a, b] = [vertices[i - 1], vertices[i]];
+        expect((a?.y ?? 0) < (b?.y ?? 0) || ((a?.y ?? 0) === (b?.y ?? 0) && (a?.x ?? 0) < (b?.x ?? 0))).toBe(true);
+      }
+    });
+
+    it("numbers edges by their lower corner, then their higher corner", () => {
+      for (let i = 1; i < edges.length; i++) {
+        const [a, b] = [edges[i - 1]?.ends ?? [0, 0], edges[i]?.ends ?? [0, 0]];
+        expect(a[0] < b[0] || (a[0] === b[0] && a[1] < b[1])).toBe(true);
+      }
+    });
+
     it("numbers corners and edges 0..n-1 in order", () => {
       expect(vertices.map((v) => v.id)).toEqual([...Array(54).keys()]);
       expect(edges.map((e) => e.id)).toEqual([...Array(72).keys()]);
