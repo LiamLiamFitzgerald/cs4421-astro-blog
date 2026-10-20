@@ -42,6 +42,8 @@ export interface PlayState {
   readonly hands: Readonly<Record<PlayerId, Hand>>;
   readonly bank: Hand;
   readonly lastRoll: Roll | null;
+  /** Holder of Longest Road, or null while vacant. */
+  readonly longestRoad: PlayerId | null;
   readonly winner: PlayerId | null;
 }
 
@@ -58,5 +60,6 @@ export const initialPlayState: PlayState = {
   hands: {},
   bank: BANK_START,
   lastRoll: null,
+  longestRoad: null,
   winner: null,
 };

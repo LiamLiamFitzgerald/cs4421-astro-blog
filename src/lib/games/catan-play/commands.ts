@@ -1,4 +1,5 @@
 import type { PlayerId } from "../catan/events";
+import type { Resource } from "./resources";
 import type { EdgeId, VertexId } from "./topology";
 
 /** Requests to change a played game. `decide` turns a valid one into events. */
@@ -8,4 +9,8 @@ export type PlayCommand =
   | { readonly type: "PlaceSetupRoad"; readonly player: PlayerId; readonly edge: EdgeId }
   /** Dice are rolled by the caller and checked here, so decide stays pure (ADR-008). */
   | { readonly type: "RollDice"; readonly player: PlayerId; readonly dice: readonly [number, number] }
-  | { readonly type: "EndTurn"; readonly player: PlayerId };
+  | { readonly type: "EndTurn"; readonly player: PlayerId }
+  | { readonly type: "BuildRoad"; readonly player: PlayerId; readonly edge: EdgeId }
+  | { readonly type: "BuildSettlement"; readonly player: PlayerId; readonly vertex: VertexId }
+  | { readonly type: "BuildCity"; readonly player: PlayerId; readonly vertex: VertexId }
+  | { readonly type: "TradeWithBank"; readonly player: PlayerId; readonly give: Resource; readonly get: Resource };

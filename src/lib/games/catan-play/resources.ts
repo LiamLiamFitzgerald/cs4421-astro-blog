@@ -46,3 +46,22 @@ export function missing(h: Hand, cost: Hand): Hand {
 export function canAfford(h: Hand, cost: Hand): boolean {
   return handSize(missing(h, cost)) === 0;
 }
+
+export type Piece = "road" | "settlement" | "city";
+
+/** What each piece costs. */
+export const COSTS: Readonly<Record<Piece, Hand>> = {
+  road: { ...emptyHand, lumber: 1, brick: 1 },
+  settlement: { ...emptyHand, lumber: 1, brick: 1, wool: 1, grain: 1 },
+  city: { ...emptyHand, grain: 2, ore: 3 },
+};
+
+/** How many of each piece a player owns. */
+export const PIECE_LIMITS: Readonly<Record<Piece, number>> = { road: 15, settlement: 5, city: 4 };
+
+/** Cards given to the bank for one card of another resource. */
+export const BANK_TRADE_RATE = 4;
+
+export function isResource(value: string): value is Resource {
+  return (RESOURCES as readonly string[]).includes(value);
+}
