@@ -56,8 +56,8 @@ module.exports = {
       severity: "warn",
       from: {
         orphan: true,
-        // consts.ts is only imported from .astro files, which dependency-cruiser does not parse.
-        pathNot: ["\\.test\\.ts$", "\\.d\\.ts$", "(^|/)\\.[^/]+\\.(c?js|mjs)$", "^src/consts\\.ts$"],
+        // Modules imported only from .astro files, which dependency-cruiser does not parse.
+        pathNot: ["\\.test\\.ts$", "\\.d\\.ts$", "(^|/)\\.[^/]+\\.(c?js|mjs)$", "^src/consts\\.ts$", "^src/ui/report-error\\.ts$"],
       },
       to: {},
     },

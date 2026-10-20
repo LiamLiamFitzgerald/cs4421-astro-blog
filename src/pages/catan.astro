@@ -113,12 +113,11 @@ import '../styles/board.css';
 </Layout>
 
 <script>
+	import { reportError } from '../ui/report-error';
 	import { startScoreboard } from '../ui/scoreboard';
 
-	startScoreboard((error, context) => {
-		// Not swallowed: the error goes to the console for debugging.
-		console.error(`[scoreboard] ${context}`, error);
-	});
+	// Unexpected failures go to the console and to the server log (/api/client-errors).
+	startScoreboard(reportError);
 </script>
 
 <style is:global>
