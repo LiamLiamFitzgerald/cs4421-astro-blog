@@ -92,3 +92,4 @@ rules, all gated in CI. See [ADR-005](adr/ADR-005-verification-strategy.md).
 - [ADR-004](adr/ADR-004-layered-architecture-and-dependency-rules.md): layers and enforced dependency rules
 - [ADR-005](adr/ADR-005-verification-strategy.md): verification strategy
 - [ADR-006](adr/ADR-006-scoreboard-ui-approach.md): scoreboard UI approach
+- [ADR-007](adr/ADR-007-design-system.md): design system and visual identity

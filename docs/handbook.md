@@ -31,6 +31,14 @@ git pull
 git checkout -b feat/<name>
 ```
 
+## UI and design system
+
+Every page uses `src/layouts/Layout.astro`. Colours, type, spacing, radii and
+shadows are tokens in `src/styles/tokens.css`; shared buttons, fields, notices,
+panels and dialogs are classes in `src/styles/base.css`; icons come from
+`src/ui/icons.ts` (via `Icon.astro` on the server). Use these rather than
+writing new values. See [ADR-007](adr/ADR-007-design-system.md).
+
 ## Commits
 
 Conventional Commits: `type(scope): summary`, for example
