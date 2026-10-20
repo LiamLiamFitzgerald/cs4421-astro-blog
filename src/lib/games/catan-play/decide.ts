@@ -30,6 +30,10 @@ export function decide(state: PlayState, command: PlayCommand): Decision {
       return requireStep(state, "place-settlement") ?? placeSetupSettlement(state, command.player, command.vertex);
     case "PlaceSetupRoad":
       return requireStep(state, "place-road") ?? placeSetupRoad(state, command.player, command.edge);
+    case "RollDice":
+      return requireStep(state, "roll") ?? rollDice(command.player, command.dice);
+    case "EndTurn":
+      return requireStep(state, "build-or-end") ?? ok([{ type: "TurnEnded", player: command.player }]);
     default:
       return assertNever(command);
   }
@@ -65,6 +69,13 @@ function placeSetupRoad(state: PlayState, player: string, edge: number): Decisio
     return err({ code: "ROAD_NOT_BESIDE_NEW_SETTLEMENT" });
   }
   return ok([{ type: "SetupRoadPlaced", player, edge }]);
+}
+
+const isDie = (n: number) => Number.isInteger(n) && n >= 1 && n <= 6;
+
+function rollDice(player: string, dice: readonly [number, number]): Decision {
+  if (dice.length !== 2 || !dice.every(isDie)) return err({ code: "INVALID_DICE", dice: [...dice] });
+  return ok([{ type: "DiceRolled", player, dice: [dice[0], dice[1]] }]);
 }
 
 function assertNever(value: never): never {

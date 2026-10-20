@@ -13,4 +13,5 @@ export type PlayViolation =
   | { readonly code: "UNKNOWN_SPOT" }
   | { readonly code: "SPOT_TAKEN" }
   | { readonly code: "TOO_CLOSE_TO_SETTLEMENT" }
-  | { readonly code: "ROAD_NOT_BESIDE_NEW_SETTLEMENT" };
+  | { readonly code: "ROAD_NOT_BESIDE_NEW_SETTLEMENT" }
+  | { readonly code: "INVALID_DICE"; readonly dice: readonly number[] };

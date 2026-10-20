@@ -1,6 +1,6 @@
 import type { Board } from "../catan/board";
 import type { PlayerId } from "../catan/events";
-import { BANK_START, type Hand } from "./resources";
+import { BANK_START, type Hand, type Resource } from "./resources";
 import type { EdgeId, VertexId } from "./topology";
 
 export type Phase = "setup" | "roll" | "main" | "finished";
@@ -11,6 +11,17 @@ export type Step = "place-settlement" | "place-road" | "roll" | "build-or-end";
 export interface Building {
   readonly player: PlayerId;
   readonly kind: "settlement" | "city";
+}
+
+/** The most recent roll and what it produced. */
+export interface Roll {
+  readonly player: PlayerId;
+  readonly dice: readonly [number, number];
+  readonly total: number;
+  /** What each player received (all zero on a 7). */
+  readonly produced: Readonly<Record<PlayerId, Hand>>;
+  /** Resources the bank could not supply to everyone who earned them. */
+  readonly shortages: readonly Resource[];
 }
 
 /** The whole played game, derived by folding events. Nothing here is stored. */
@@ -30,6 +41,7 @@ export interface PlayState {
   readonly roads: Readonly<Record<EdgeId, PlayerId>>;
   readonly hands: Readonly<Record<PlayerId, Hand>>;
   readonly bank: Hand;
+  readonly lastRoll: Roll | null;
   readonly winner: PlayerId | null;
 }
 
@@ -45,5 +57,6 @@ export const initialPlayState: PlayState = {
   roads: {},
   hands: {},
   bank: BANK_START,
+  lastRoll: null,
   winner: null,
 };
