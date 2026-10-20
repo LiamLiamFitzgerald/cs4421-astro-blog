@@ -56,6 +56,8 @@ export function describeViolation(violation: RuleViolation): string {
       return `${violation.player} has no settlement to upgrade.`;
     case "INVALID_ROAD_LENGTH":
       return `${violation.length} is not a valid road length.`;
+    case "INVALID_SEED":
+      return `${violation.seed} is not a valid board seed.`;
   }
 }
 

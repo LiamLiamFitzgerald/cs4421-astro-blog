@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CatanCommand } from "./commands";
+import { generateBoard, MAX_SEED } from "./board";
 import { decide } from "./decide";
 import type { CatanEvent } from "./events";
 import { replay } from "./evolve";
@@ -162,5 +163,35 @@ describe("Feature: commands are validated against the rules", () => {
 
       expect(JSON.stringify(state)).toBe(snapshot);
     });
+  });
+});
+
+describe("Feature: a board is dealt when a game starts", () => {
+  it("given a seed, GameStarted carries the board dealt from that seed", () => {
+    const result = when([], { type: "StartGame", players: ["ana", "ben"], seed: 7 });
+
+    expect(result).toEqual({
+      ok: true,
+      value: [{ type: "GameStarted", players: ["ana", "ben"], board: generateBoard(7) }],
+    });
+  });
+
+  it("given no seed, GameStarted has no board", () => {
+    const result = when([], { type: "StartGame", players: ["ana", "ben"] });
+
+    expect(result.ok && result.value[0]).toEqual({ type: "GameStarted", players: ["ana", "ben"] });
+  });
+
+  it.each([-1, 1.5, MAX_SEED + 1])("given seed %d, StartGame is rejected", (seed) => {
+    expect(when([], { type: "StartGame", players: ["ana", "ben"], seed })).toEqual({
+      ok: false,
+      error: { code: "INVALID_SEED", seed },
+    });
+  });
+
+  it("given invalid players and a seed, the player error wins", () => {
+    const result = when([], { type: "StartGame", players: ["ana"], seed: -1 });
+
+    expect(!result.ok && result.error.code).toBe("INVALID_PLAYERS");
   });
 });

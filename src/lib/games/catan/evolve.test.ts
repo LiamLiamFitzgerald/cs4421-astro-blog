@@ -1,3 +1,4 @@
+import { generateBoard } from "./board";
 import { describe, expect, it } from "vitest";
 import type { CatanEvent } from "./events";
 import { evolve, replay } from "./evolve";
@@ -34,6 +35,7 @@ describe("Feature: match state is derived from events", () => {
         largestArmy: null,
         longestRoad: null,
         winner: null,
+        board: null,
       });
     });
 
@@ -136,5 +138,28 @@ describe("Feature: match state is derived from events", () => {
 
       expect(JSON.stringify(before)).toBe(snapshot);
     });
+  });
+});
+
+describe("Feature: the board is part of the derived state", () => {
+  it("given GameStarted with a board, the state holds that board", () => {
+    const board = generateBoard(3);
+
+    expect(replay([{ type: "GameStarted", players: ["ana", "ben"], board }]).board).toEqual(board);
+  });
+
+  it("given a game stored before boards existed, the board is null", () => {
+    expect(replay([{ type: "GameStarted", players: ["ana", "ben"] }]).board).toBeNull();
+  });
+
+  it("given a second GameStarted with another board, the first board is kept", () => {
+    const first = generateBoard(1);
+
+    const state = replay([
+      { type: "GameStarted", players: ["ana", "ben"], board: first },
+      { type: "GameStarted", players: ["x", "y"], board: generateBoard(2) },
+    ]);
+
+    expect(state.board).toEqual(first);
   });
 });

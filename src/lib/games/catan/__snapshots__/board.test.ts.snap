@@ -1,0 +1,122 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Feature: dealing the base-game board > Scenario: variety > a known seed deals a known board (guards against accidental changes) 1`] = `
+{
+  "hexes": [
+    {
+      "q": 0,
+      "r": -2,
+      "terrain": "pasture",
+      "token": 8,
+    },
+    {
+      "q": 1,
+      "r": -2,
+      "terrain": "pasture",
+      "token": 5,
+    },
+    {
+      "q": 2,
+      "r": -2,
+      "terrain": "hills",
+      "token": 4,
+    },
+    {
+      "q": -1,
+      "r": -1,
+      "terrain": "hills",
+      "token": 5,
+    },
+    {
+      "q": 0,
+      "r": -1,
+      "terrain": "forest",
+      "token": 4,
+    },
+    {
+      "q": 1,
+      "r": -1,
+      "terrain": "forest",
+      "token": 3,
+    },
+    {
+      "q": 2,
+      "r": -1,
+      "terrain": "fields",
+      "token": 9,
+    },
+    {
+      "q": -2,
+      "r": 0,
+      "terrain": "mountains",
+      "token": 6,
+    },
+    {
+      "q": -1,
+      "r": 0,
+      "terrain": "forest",
+      "token": 2,
+    },
+    {
+      "q": 0,
+      "r": 0,
+      "terrain": "pasture",
+      "token": 3,
+    },
+    {
+      "q": 1,
+      "r": 0,
+      "terrain": "desert",
+      "token": null,
+    },
+    {
+      "q": 2,
+      "r": 0,
+      "terrain": "fields",
+      "token": 6,
+    },
+    {
+      "q": -2,
+      "r": 1,
+      "terrain": "mountains",
+      "token": 11,
+    },
+    {
+      "q": -1,
+      "r": 1,
+      "terrain": "fields",
+      "token": 8,
+    },
+    {
+      "q": 0,
+      "r": 1,
+      "terrain": "forest",
+      "token": 10,
+    },
+    {
+      "q": 1,
+      "r": 1,
+      "terrain": "hills",
+      "token": 10,
+    },
+    {
+      "q": -2,
+      "r": 2,
+      "terrain": "mountains",
+      "token": 12,
+    },
+    {
+      "q": -1,
+      "r": 2,
+      "terrain": "pasture",
+      "token": 9,
+    },
+    {
+      "q": 0,
+      "r": 2,
+      "terrain": "fields",
+      "token": 11,
+    },
+  ],
+}
+`;
