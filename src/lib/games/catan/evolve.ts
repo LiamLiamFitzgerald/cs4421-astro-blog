@@ -3,6 +3,7 @@ import {
   LONGEST_ROAD_THRESHOLD,
   resolveExclusiveAward,
 } from "./awards";
+import type { Board } from "./board";
 import type { CatanEvent, PlayerId } from "./events";
 import { totalPoints, WINNING_POINTS } from "./score";
 import {
@@ -27,7 +28,7 @@ export function evolve(state: CatanState, event: CatanEvent): CatanState {
 function applyEvent(state: CatanState, event: CatanEvent): CatanState {
   switch (event.type) {
     case "GameStarted":
-      return startGame(state, event.players);
+      return startGame(state, event.players, event.board ?? null);
     case "SettlementBuilt":
       return updatePlayer(state, event.player, (p) => ({
         ...p,
@@ -109,13 +110,18 @@ function countsOf(
   );
 }
 
-function startGame(state: CatanState, players: readonly PlayerId[]): CatanState {
+function startGame(
+  state: CatanState,
+  players: readonly PlayerId[],
+  board: Board | null,
+): CatanState {
   if (state.started) return state;
   return {
     ...state,
     started: true,
     playerOrder: [...players],
     players: Object.fromEntries(players.map((id) => [id, emptyPlayer])),
+    board,
   };
 }
 

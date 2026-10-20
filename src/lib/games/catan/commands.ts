@@ -2,7 +2,12 @@ import type { PlayerId } from "./events";
 
 /** Requests to change the match. `decide` turns a valid one into events. */
 export type CatanCommand =
-  | { readonly type: "StartGame"; readonly players: readonly PlayerId[] }
+  | {
+      readonly type: "StartGame";
+      readonly players: readonly PlayerId[];
+      /** When given, a board is dealt from this seed and stored with the game. */
+      readonly seed?: number;
+    }
   | { readonly type: "BuildSettlement"; readonly player: PlayerId }
   | { readonly type: "UpgradeSettlement"; readonly player: PlayerId }
   | { readonly type: "RevealVictoryPointCard"; readonly player: PlayerId }

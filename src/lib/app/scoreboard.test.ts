@@ -71,6 +71,7 @@ describe("Feature: readable messages", () => {
       "ana has no settlement to upgrade.",
     );
     expect(describeViolation({ code: "GAME_OVER", winner: "ben" })).toContain("ben");
+    expect(describeViolation({ code: "INVALID_SEED", seed: -1 })).toBe("-1 is not a valid board seed.");
   });
 
   it("describes events for the history list", () => {

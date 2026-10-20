@@ -1,4 +1,5 @@
 import { err, ok, type Result } from "../../core/result";
+import { generateBoard, isValidSeed } from "./board";
 import type { CatanCommand } from "./commands";
 import type { CatanEvent, PlayerId } from "./events";
 import type { CatanState } from "./state";
@@ -16,7 +17,9 @@ export function decide(
   state: CatanState,
   command: CatanCommand,
 ): Result<readonly CatanEvent[], RuleViolation> {
-  if (command.type === "StartGame") return startGame(state, command.players);
+  if (command.type === "StartGame") {
+    return startGame(state, command.players, command.seed);
+  }
 
   if (!state.started) return err({ code: "GAME_NOT_STARTED" });
   if (state.winner !== null) {
@@ -55,6 +58,7 @@ export function decide(
 function startGame(
   state: CatanState,
   players: readonly PlayerId[],
+  seed: number | undefined,
 ): Result<readonly CatanEvent[], RuleViolation> {
   if (state.started) return err({ code: "GAME_ALREADY_STARTED" });
 
@@ -70,7 +74,9 @@ function startGame(
   if (new Set(players).size !== players.length) {
     return err({ code: "INVALID_PLAYERS", reason: "player ids must be unique" });
   }
-  return ok([{ type: "GameStarted", players: [...players] }]);
+  if (seed === undefined) return ok([{ type: "GameStarted", players: [...players] }]);
+  if (!isValidSeed(seed)) return err({ code: "INVALID_SEED", seed });
+  return ok([{ type: "GameStarted", players: [...players], board: generateBoard(seed) }]);
 }
 
 function isValidRoadLength(length: number): boolean {
