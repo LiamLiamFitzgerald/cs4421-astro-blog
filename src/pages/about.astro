@@ -1,50 +1,56 @@
 ---
-import BaseHead from '../components/BaseHead.astro';
-import Footer from '../components/Footer.astro';
-import Header from '../components/Header.astro';
-import { SITE_TITLE } from '../consts';
+import { REPO_URL } from '../consts';
+import Layout from '../layouts/Layout.astro';
 
-const repo = 'https://github.com/LiamLiamFitzgerald/cs4421-astro-blog';
+const doc = (path: string) => `${REPO_URL}/blob/develop/docs/${path}`;
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={`About · ${SITE_TITLE}`} description="What this project is and how it is built." />
-	</head>
-	<body>
-		<Header />
-		<main>
-			<h1>About</h1>
-			<p>
-				This site is my project for <strong>CS4421 DevOps</strong> at the University of Limerick. The
-				Catan scoreboard is the product, but the point of the project is the engineering around it:
-				code that stays easy to change, checks that catch mistakes before they merge, and a deploy
-				that can be repeated, observed and rolled back.
-			</p>
+<Layout title="About" description="What this project is and how it is built.">
+	<article class="about">
+		<h1>About this project</h1>
+		<p class="about__lede">
+			Catan Tracker is my project for CS4421 DevOps at the University of Limerick. The scoreboard is
+			the product, but the point is the engineering around it: code that stays easy to change,
+			checks that catch mistakes before they merge, and a deploy that can be repeated, watched and
+			rolled back.
+		</p>
 
-			<h2>What happens on every pull request</h2>
-			<ul>
-				<li>Commit messages are checked against Conventional Commits.</li>
-				<li>Lint, type checks and architecture rules run.</li>
-				<li>Unit, property-based and end-to-end browser tests run.</li>
-				<li>The site, the container image and the AWS infrastructure are built and tested.</li>
-			</ul>
-			<p>
-				Branches follow GitFlow: features merge into <code>develop</code> through pull requests, and
-				releases go to <code>main</code>, where release-please writes the changelog and version tag.
-				Mutation testing runs weekly to check that the tests actually catch bugs.
-			</p>
+		<h2>What happens on every pull request</h2>
+		<ol>
+			<li>Commit messages are checked against Conventional Commits.</li>
+			<li>Lint, type checks and the architecture rules run.</li>
+			<li>Unit, property-based and browser tests run.</li>
+			<li>The site, the container image and the AWS infrastructure are built and tested.</li>
+		</ol>
+		<p>
+			Branches follow GitFlow. Features merge into <code>develop</code> through pull requests, and
+			releases go to <code>main</code>, where release-please writes the changelog and the version
+			tag. Mutation testing runs weekly to check that the tests really catch bugs.
+		</p>
 
-			<h2>Read more</h2>
-			<ul>
-				<li><a href={`${repo}/blob/develop/docs/architecture.md`}>Architecture overview</a></li>
-				<li><a href={`${repo}/tree/develop/docs/adr`}>Architecture decision records</a></li>
-				<li><a href={`${repo}/blob/develop/docs/handbook.md`}>Developer handbook</a></li>
-				<li><a href={repo}>Source code</a></li>
-			</ul>
-			<p>Built by Liam Fitzgerald.</p>
-		</main>
-		<Footer />
-	</body>
-</html>
+		<h2>Read more</h2>
+		<ul>
+			<li><a href={doc('architecture.md')}>Architecture overview</a></li>
+			<li><a href={`${REPO_URL}/tree/develop/docs/adr`}>Architecture decision records</a></li>
+			<li><a href={doc('handbook.md')}>Developer handbook</a></li>
+			<li><a href={REPO_URL}>Source code</a></li>
+		</ul>
+	</article>
+</Layout>
+
+<style>
+	.about {
+		max-width: var(--prose-width);
+	}
+	.about__lede {
+		font-size: var(--text-l);
+		color: var(--color-ink-muted);
+	}
+	.about h2 {
+		margin-top: var(--space-6);
+		font-size: var(--text-xl);
+	}
+	.about li {
+		margin-bottom: var(--space-1);
+	}
+</style>

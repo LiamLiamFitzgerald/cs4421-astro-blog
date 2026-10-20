@@ -1,0 +1,303 @@
+/* Base element styles and shared component classes. Values come from tokens.css. */
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	font-size: 106.25%; /* 17px */
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+	font-family: var(--font-body);
+	font-size: var(--text-m);
+	line-height: var(--leading-body);
+	/* Lining figures: scores and dice numbers must be easy to compare. */
+	font-variant-numeric: lining-nums;
+	color: var(--color-ink);
+	background-color: var(--color-bg);
+	/* Faint paper grain. Decorative only, so it is drawn at very low contrast. */
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.27 0 0 0 0 0.12 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+main {
+	flex: 1;
+	width: 100%;
+	max-width: var(--content-width);
+	margin: 0 auto;
+	padding: var(--space-6) var(--space-4) var(--space-8);
+}
+
+h1,
+h2,
+h3 {
+	font-family: var(--font-heading);
+	font-weight: 700;
+	line-height: var(--leading-tight);
+	color: var(--color-ink);
+	margin: 0 0 var(--space-3);
+	text-wrap: balance;
+}
+h1 {
+	font-size: var(--text-3xl);
+}
+h2 {
+	font-size: var(--text-2xl);
+}
+h3 {
+	font-size: var(--text-l);
+}
+
+p {
+	margin: 0 0 var(--space-4);
+	max-width: var(--prose-width);
+}
+
+a {
+	color: var(--color-terracotta-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.18em;
+}
+a:hover {
+	color: var(--color-terracotta);
+	text-decoration-thickness: 2px;
+}
+
+code {
+	font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+	font-size: 0.88em;
+	padding: 0.1em 0.3em;
+	border-radius: var(--radius-s);
+	background: var(--color-surface-sunk);
+}
+
+:focus-visible {
+	outline: 3px solid var(--color-focus);
+	outline-offset: 2px;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+.muted {
+	color: var(--color-ink-muted);
+}
+
+/* Buttons: one primary action per screen, secondary for everything else. */
+.button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	min-height: 2.5rem;
+	padding: var(--space-2) var(--space-4);
+	font: 500 var(--text-m) / 1 var(--font-body);
+	color: var(--color-ink);
+	text-decoration: none;
+	background: var(--color-surface);
+	border: 1px solid var(--color-line-strong);
+	border-radius: var(--radius-s);
+	box-shadow: var(--shadow-1);
+	cursor: pointer;
+	transition:
+		background-color var(--duration-fast) var(--ease-out),
+		border-color var(--duration-fast) var(--ease-out),
+		transform var(--duration-fast) var(--ease-out);
+}
+.button:hover {
+	color: var(--color-ink);
+	background: #fffdf7;
+	border-color: var(--color-forest);
+	text-decoration: none;
+}
+.button:active {
+	transform: translateY(1px);
+	box-shadow: none;
+}
+.button:disabled,
+.button[aria-disabled='true'] {
+	cursor: not-allowed;
+	opacity: 0.5;
+	transform: none;
+	box-shadow: none;
+}
+.button svg {
+	width: 1.1em;
+	height: 1.1em;
+	flex: none;
+}
+.button--primary {
+	color: var(--color-ink-inverse);
+	background: var(--color-terracotta);
+	border-color: var(--color-terracotta-strong);
+}
+.button--primary:hover {
+	color: var(--color-ink-inverse);
+	background: var(--color-terracotta-strong);
+	border-color: var(--color-terracotta-strong);
+}
+.button--quiet {
+	background: transparent;
+	border-color: transparent;
+	box-shadow: none;
+}
+.button--quiet:hover {
+	background: var(--color-surface-sunk);
+	border-color: transparent;
+}
+.button--small {
+	min-height: 2rem;
+	padding: var(--space-1) var(--space-3);
+	font-size: var(--text-s);
+}
+
+/* Form fields */
+.field {
+	display: grid;
+	gap: var(--space-1);
+}
+.field label {
+	font-weight: 500;
+}
+.hint {
+	font-size: var(--text-s);
+	color: var(--color-ink-muted);
+	margin: 0;
+}
+.input {
+	min-height: 2.5rem;
+	padding: var(--space-2) var(--space-3);
+	font: var(--text-m) / 1.3 var(--font-body);
+	color: var(--color-ink);
+	background: #fffdf7;
+	border: 1px solid var(--color-line-strong);
+	border-radius: var(--radius-s);
+}
+.input:hover {
+	border-color: var(--color-forest);
+}
+.input[aria-invalid='true'] {
+	border-color: var(--color-danger);
+	box-shadow: 0 0 0 1px var(--color-danger);
+}
+
+/* Notices: info, success and error share one shape; the icon and text say which. */
+.notice {
+	display: flex;
+	gap: var(--space-3);
+	align-items: flex-start;
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-m);
+	border: 1px solid var(--color-line);
+	background: var(--color-surface);
+	font-size: var(--text-s);
+}
+.notice[hidden] {
+	display: none;
+}
+.notice > svg {
+	flex: none;
+	width: 1.25rem;
+	height: 1.25rem;
+	margin-top: 0.1rem;
+}
+.notice__body {
+	flex: 1;
+}
+.notice__body p {
+	margin: 0;
+}
+.notice__title {
+	font-weight: 700;
+}
+.notice--error {
+	background: var(--color-danger-tint);
+	border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+	color: #5e1f15;
+}
+.notice--error > svg {
+	color: var(--color-danger);
+}
+.notice--success {
+	background: var(--color-success-tint);
+	border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+}
+.notice--success > svg {
+	color: var(--color-success);
+}
+.notice .button {
+	margin-top: var(--space-2);
+}
+
+/* Panels: the one surface style for grouped content. */
+.panel {
+	background: var(--color-surface);
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-1);
+}
+
+/* Dialogs (native <dialog>, so focus trapping and Escape come from the browser). */
+.dialog {
+	width: min(28rem, calc(100vw - 2rem));
+	padding: var(--space-5);
+	color: var(--color-ink);
+	background: var(--color-surface);
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-2);
+}
+.dialog::backdrop {
+	background: rgb(20 42 30 / 0.45);
+}
+.dialog h2 {
+	font-size: var(--text-xl);
+}
+.dialog__actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	margin-top: var(--space-5);
+}
+
+@media (max-width: 40rem) {
+	h1 {
+		font-size: var(--text-2xl);
+	}
+	h2 {
+		font-size: var(--text-xl);
+	}
+	main {
+		padding-top: var(--space-5);
+	}
+}
+
+/* Icons: stroke drawings that inherit the text colour. */
+.icon {
+	width: 1.25em;
+	height: 1.25em;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	vertical-align: -0.2em;
+}

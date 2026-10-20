@@ -1,162 +1,200 @@
 ---
-import BaseHead from '../components/BaseHead.astro';
-import Footer from '../components/Footer.astro';
-import Header from '../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
+import Icon from '../components/Icon.astro';
+import { REPO_URL } from '../consts';
+import Layout from '../layouts/Layout.astro';
+import '../styles/board.css';
 
-const repo = 'https://github.com/LiamLiamFitzgerald/cs4421-astro-blog';
-const pillars = [
+const adr = (file: string) => `${REPO_URL}/blob/develop/docs/adr/${file}.md`;
+
+const practices = [
 	{
-		title: 'Event-sourced core',
-		body: 'Every action is stored as an event. Scores, awards and the winner are replayed from the log, never stored.',
-		link: { href: `${repo}/blob/develop/docs/adr/ADR-003-event-sourced-game-core.md`, label: 'ADR-003' },
+		title: 'Every action is an event',
+		body: 'Scores, awards and the winner are worked out by replaying the game’s event log, so nothing can drift out of sync.',
+		href: adr('ADR-003-event-sourced-game-core'),
+		ref: 'ADR-003',
 	},
 	{
-		title: 'Enforced layers',
-		body: 'Game rules know nothing about Astro, storage or the browser. CI fails if a dependency points the wrong way.',
-		link: { href: `${repo}/blob/develop/docs/adr/ADR-004-layered-architecture-and-dependency-rules.md`, label: 'ADR-004' },
+		title: 'Rules that cannot leak',
+		body: 'The game rules know nothing about the browser or storage, and CI fails if code depends in the wrong direction.',
+		href: adr('ADR-004-layered-architecture-and-dependency-rules'),
+		ref: 'ADR-004',
 	},
 	{
-		title: 'Tested at every level',
-		body: 'Given/When/Then unit tests, property-based tests, mutation testing and a browser test that plays a game on every pull request.',
-		link: { href: `${repo}/blob/develop/docs/adr/ADR-005-verification-strategy.md`, label: 'ADR-005' },
+		title: 'Checked on every change',
+		body: 'Unit and property-based tests, mutation testing, and a browser test that plays a game before anything merges.',
+		href: adr('ADR-005-verification-strategy'),
+		ref: 'ADR-005',
 	},
 	{
 		title: 'Shipped as a container',
-		body: 'Server-rendered Astro in a Docker image with a health endpoint and JSON request logs, defined for AWS Fargate in CDK.',
-		link: { href: `${repo}/blob/develop/docs/adr/ADR-001-transition-to-ssr-and-containers.md`, label: 'ADR-001' },
+		body: 'A server-rendered app with a health check and JSON logs, defined as infrastructure code for AWS Fargate.',
+		href: adr('ADR-001-transition-to-ssr-and-containers'),
+		ref: 'ADR-001',
 	},
 	{
-		title: 'GitFlow and releases',
-		body: 'Feature branches, Conventional Commits checked in CI, protected branches, and versioned releases from release-please.',
-		link: { href: `${repo}/blob/develop/docs/adr/ADR-002-gitflow-branching-model.md`, label: 'ADR-002' },
+		title: 'Released from history',
+		body: 'GitFlow branches and Conventional Commits, so versions and the changelog are generated, not written by hand.',
+		href: adr('ADR-002-gitflow-branching-model'),
+		ref: 'ADR-002',
 	},
 	{
-		title: 'Thin UI',
-		body: 'The scoreboard is plain TypeScript over the same tested functions, so the interface can change without touching the rules.',
-		link: { href: `${repo}/blob/develop/docs/adr/ADR-006-scoreboard-ui-approach.md`, label: 'ADR-006' },
+		title: 'One design system',
+		body: 'Every page shares the same colours, type, controls and messages, defined once as tokens and components.',
+		href: adr('ADR-007-design-system'),
+		ref: 'ADR-007',
 	},
 ];
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-	</head>
-	<body>
-		<Header />
-		<main class="home">
-			<section class="hero">
-				<p class="eyebrow">CS4421 DevOps project</p>
-				<h1>Keep score in Catan.<br />Learn how it's built.</h1>
-				<p class="lede">
-					A scorekeeper for Settlers of Catan, used as a real codebase for practising the engineering
-					around software: architecture that defends itself, automated checks, containers and
-					repeatable releases.
-				</p>
-				<div class="cta">
-					<a class="button primary" href="/catan">Open the scoreboard</a>
-					<a class="button" href={repo} target="_blank" rel="noopener">View the source</a>
-				</div>
-			</section>
+<Layout>
+	<section class="hero" aria-labelledby="hero-title">
+		<div class="hero__text">
+			<h1 id="hero-title">Deal a fair board, then keep score.</h1>
+			<p class="hero__lede">
+				Every board follows the base-game rules, with no 6 or 8 side by side. Record settlements,
+				cities, knights and roads as you play, and the scoreboard works out the awards and the
+				winner.
+			</p>
+			<div class="hero__actions">
+				<a class="button button--primary" href="/catan" id="start-link">
+					<Icon name="plus" />
+					Start a game on this board
+				</a>
+				<button class="button" type="button" id="deal" disabled>
+					<Icon name="dice" />
+					Deal another board
+				</button>
+			</div>
+		</div>
+		<figure class="hero__board">
+			<svg class="board" id="board" aria-labelledby="board-caption"></svg>
+			<figcaption id="board-caption" class="hint">
+				A random board. <span id="board-balance"></span>
+			</figcaption>
+			<ol class="sr-only" id="board-list" aria-label="Hexes on this board"></ol>
+			<noscript><p class="hint">Turn on JavaScript to deal a board.</p></noscript>
+		</figure>
+	</section>
 
-			<section>
-				<h2>How it's built</h2>
-				<div class="pillars">
-					{
-						pillars.map((pillar) => (
-							<article>
-								<h3>{pillar.title}</h3>
-								<p>{pillar.body}</p>
-								<a href={pillar.link.href} target="_blank" rel="noopener">
-									Read {pillar.link.label} →
-								</a>
-							</article>
-						))
-					}
-				</div>
-			</section>
-		</main>
-		<Footer />
-	</body>
-</html>
+	<section class="practices" aria-labelledby="practices-title">
+		<h2 id="practices-title">How it is built</h2>
+		<p class="muted">
+			The scoreboard is small on purpose. The project is the engineering around it, so that it can
+			be maintained and extended safely.
+		</p>
+		<dl class="practices__list">
+			{
+				practices.map((p) => (
+					<div class="practices__item">
+						<dt>{p.title}</dt>
+						<dd>
+							{p.body} <a href={p.href}>Read {p.ref}</a>
+						</dd>
+					</div>
+				))
+			}
+		</dl>
+	</section>
+</Layout>
+
+<script>
+	import { generateBoard, MAX_SEED } from '../lib/games/catan/board';
+	import { renderBoard } from '../ui/board';
+
+	const svg = document.getElementById('board') as unknown as SVGSVGElement;
+	const list = document.getElementById('board-list') as HTMLOListElement;
+	const deal = document.getElementById('deal') as HTMLButtonElement;
+	const start = document.getElementById('start-link') as HTMLAnchorElement;
+	const balance = document.getElementById('board-balance') as HTMLSpanElement;
+
+	function show(seed: number) {
+		const board = generateBoard(seed);
+		renderBoard(svg, board, list);
+		// Hand the same board to the scoreboard, so "start on this board" means it.
+		start.href = `/catan?seed=${seed}`;
+		const desert = board.hexes.find((hex) => hex.terrain === 'desert');
+		balance.textContent =
+			desert && desert.q === 0 && desert.r === 0
+				? 'The desert is in the centre.'
+				: 'Red numbers are never next to each other.';
+	}
+
+	const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] ?? Math.floor(Math.random() * MAX_SEED);
+
+	show(randomSeed());
+	deal.disabled = false;
+	deal.addEventListener('click', () => show(randomSeed()));
+</script>
 
 <style>
-	main.home {
-		width: 1040px;
-		max-width: calc(100% - 2em);
-	}
 	.hero {
-		max-width: 720px;
-		margin: 1em 0 3em;
-	}
-	.eyebrow {
-		margin: 0;
-		font-size: 0.75em;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--accent);
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+		align-items: center;
+		gap: var(--space-6);
+		margin-bottom: var(--space-8);
 	}
 	.hero h1 {
-		font-size: 2.6em;
-		line-height: 1.15;
-		margin: 0.2em 0 0.4em;
+		font-size: clamp(var(--text-2xl), 4.2vw, 3.05rem);
+		max-width: 17ch;
 	}
-	.lede {
-		color: rgb(var(--gray));
+	.hero__lede {
+		font-size: var(--text-l);
+		color: var(--color-ink-muted);
+		max-width: 34ch;
 	}
-	.cta {
+	.hero__actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.7em;
-		margin-top: 1.4em;
+		gap: var(--space-3);
+		margin-top: var(--space-5);
 	}
-	.button {
-		display: inline-block;
-		padding: 0.5em 1.1em;
-		border-radius: 8px;
-		border: 1px solid rgb(var(--gray-light));
-		background: #fff;
-		color: rgb(var(--gray-dark));
-		text-decoration: none;
-		font-size: 0.9em;
+	.hero__board {
+		margin: 0;
 	}
-	.button.primary {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: #fff;
+	.hero__board .board {
+		max-width: 34rem;
+		margin: 0 auto;
+		filter: drop-shadow(0 10px 18px rgb(43 36 25 / 0.18));
 	}
-	.button:hover {
-		border-color: var(--accent);
+	.hero__board figcaption {
+		text-align: center;
+		margin-top: var(--space-2);
 	}
-	.pillars {
+	.practices {
+		border-top: 1px solid var(--color-line);
+		padding-top: var(--space-6);
+	}
+	.practices__list {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-		gap: 1em;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-5) var(--space-7);
+		margin: var(--space-5) 0 0;
 	}
-	.pillars article {
-		background: #fff;
-		border-radius: 12px;
-		padding: 1em 1.2em;
-		box-shadow: var(--box-shadow);
+	.practices__item dt {
+		font-family: var(--font-heading);
+		font-size: var(--text-l);
+		font-weight: 700;
+		margin-bottom: var(--space-1);
 	}
-	.pillars h3 {
-		font-size: 1.1em;
-		margin: 0 0 0.3em;
+	.practices__item dd a {
+		white-space: nowrap;
 	}
-	.pillars p {
-		font-size: 0.85em;
-		color: rgb(var(--gray));
-		margin: 0 0 0.6em;
+	.practices__item dd {
+		margin: 0;
+		color: var(--color-ink-muted);
+		max-width: 46ch;
 	}
-	.pillars a {
-		font-size: 0.8em;
-	}
-	@media (max-width: 720px) {
-		.hero h1 {
-			font-size: 1.9em;
+	@media (max-width: 52rem) {
+		.hero {
+			grid-template-columns: 1fr;
+			gap: var(--space-4);
+		}
+		.hero__board {
+			order: -1;
+		}
+		.practices__list {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

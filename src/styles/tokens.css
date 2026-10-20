@@ -1,0 +1,100 @@
+/*
+ * Design tokens: the single source for colour, type, spacing, radii, shadows
+ * and motion. Components use these variables, never raw values. See ADR-007.
+ */
+:root {
+	/* Surfaces: ivory and parchment, kept quiet so the board carries the colour. */
+	--color-bg: #f6f0df;
+	--color-surface: #fbf7ec;
+	--color-surface-sunk: #ede3c8;
+	--color-line: #d8cba8;
+	--color-line-strong: #b9a87f;
+
+	/* Text */
+	--color-ink: #2b2419;
+	--color-ink-muted: #665a45;
+	--color-ink-inverse: #f6f0df;
+
+	/* Brand */
+	--color-forest: #1e3a2a;
+	--color-forest-strong: #142a1e;
+	--color-forest-tint: #dfe6d5;
+	--color-terracotta: #9f5236;
+	--color-terracotta-strong: #84422a;
+	--color-terracotta-tint: #f2ddd1;
+	--color-gold: #b8892b;
+	--color-gold-tint: #f4e6c2;
+
+	/* Feedback */
+	--color-success: #2e6b3f;
+	--color-success-tint: #e1ecd8;
+	--color-danger: #9b3324;
+	--color-danger-tint: #f6dcd6;
+	--color-focus: #2f6e8e;
+
+	/* Board: the one colourful area of the interface. */
+	--terrain-forest: #2e6b3f;
+	--terrain-pasture: #93bd5b;
+	--terrain-fields: #e1b649;
+	--terrain-hills: #c46a3f;
+	--terrain-mountains: #8b8f94;
+	--terrain-desert: #dcc894;
+	--color-sea: #2f6e8e;
+	--color-sea-deep: #24566f;
+	--color-token: #fbf3dc;
+	--color-token-red: #b42f22;
+
+	/* Player seats. Always paired with a seat number, never colour alone. */
+	--seat-1: #b8392b;
+	--seat-2: #2d5f9a;
+	--seat-3: #a35a0e;
+	--seat-4: #3f7d4e;
+	--seat-5: #6f4a8e;
+	--seat-6: #7a5a3a;
+
+	/* Type: Alegreya for headings, Alegreya Sans for the interface. Scale ratio 1.25. */
+	--font-heading: var(--font-display), Georgia, serif;
+	--font-body: var(--font-ui), system-ui, sans-serif;
+	--text-xs: 0.8rem;
+	--text-s: 0.9rem;
+	--text-m: 1rem;
+	--text-l: 1.25rem;
+	--text-xl: 1.563rem;
+	--text-2xl: 1.953rem;
+	--text-3xl: 2.441rem;
+	--leading-tight: 1.15;
+	--leading-body: 1.55;
+
+	/* Spacing: 4px base. */
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-5: 1.5rem;
+	--space-6: 2rem;
+	--space-7: 3rem;
+	--space-8: 4.5rem;
+
+	/* Radii: small for controls, medium for panels, full for tokens and badges. */
+	--radius-s: 6px;
+	--radius-m: 10px;
+	--radius-full: 999px;
+
+	/* Shadows: warm-tinted and low, so surfaces read as paper on a table. */
+	--shadow-1: 0 1px 0 rgb(43 36 25 / 0.05), 0 1px 3px rgb(43 36 25 / 0.08);
+	--shadow-2: 0 2px 4px rgb(43 36 25 / 0.08), 0 12px 32px rgb(43 36 25 / 0.16);
+
+	--duration-fast: 120ms;
+	--duration-medium: 240ms;
+	--ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+	--content-width: 72rem;
+	--prose-width: 40rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--duration-fast: 0ms;
+		--duration-medium: 0ms;
+	}
+}

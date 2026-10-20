@@ -1,17 +1,9 @@
 ---
-import BaseHead from '../components/BaseHead.astro';
-import Footer from '../components/Footer.astro';
-import Header from '../components/Header.astro';
+import Layout from '../layouts/Layout.astro';
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title="Catan scoreboard" description="Event-sourced Catan scorekeeper" />
-	</head>
-	<body>
-		<Header />
-		<main class="catan">
+<Layout title="Scoreboard" description="Deal a board and keep score for a game of Catan.">
+	<div class="catan">
 			<p id="message" class="message" role="status" aria-live="polite"></p>
 			<section id="setup" class="setup">
 				<h1>Catan scoreboard</h1>
@@ -36,10 +28,8 @@ import Header from '../components/Header.astro';
 					<ol id="events"></ol>
 				</details>
 			</section>
-		</main>
-		<Footer />
-	</body>
-</html>
+	</div>
+</Layout>
 
 <script>
 	import { LocalStorageEventStore } from '../lib/adapters/local-storage-event-store';
@@ -203,7 +193,7 @@ import Header from '../components/Header.astro';
 </script>
 
 <style is:global>
-	main.catan {
+	.catan {
 		width: 1040px;
 		max-width: calc(100% - 2em);
 		padding-top: 2em;
@@ -214,7 +204,7 @@ import Header from '../components/Header.astro';
 			margin-bottom: 0.2em;
 		}
 		.lede {
-			color: rgb(var(--gray));
+			color: var(--color-ink-muted);
 			margin-top: 0;
 		}
 		.setup {
@@ -229,7 +219,7 @@ import Header from '../components/Header.astro';
 		input {
 			font: inherit;
 			padding: 0.5em 0.7em;
-			border: 1px solid rgb(var(--gray-light));
+			border: 1px solid var(--color-line);
 			border-radius: 8px;
 			background: #fff;
 			color: inherit;
@@ -242,14 +232,14 @@ import Header from '../components/Header.astro';
 			font-size: 0.8em;
 			cursor: pointer;
 			border-radius: 8px;
-			border: 1px solid rgb(var(--gray-light));
+			border: 1px solid var(--color-line);
 			background: #fff;
-			color: rgb(var(--gray-dark));
+			color: var(--color-ink);
 			padding: 0.35em 0.8em;
 			transition: transform 0.08s, background 0.15s, border-color 0.15s;
 		}
 		button:hover:not(:disabled) {
-			border-color: var(--accent);
+			border-color: var(--color-terracotta);
 			transform: translateY(-1px);
 		}
 		button:disabled {
@@ -257,8 +247,8 @@ import Header from '../components/Header.astro';
 			cursor: not-allowed;
 		}
 		button.primary {
-			background: var(--accent);
-			border-color: var(--accent);
+			background: var(--color-terracotta);
+			border-color: var(--color-terracotta);
 			color: #fff;
 			font-size: 1em;
 			padding: 0.55em 1em;
@@ -294,7 +284,7 @@ import Header from '../components/Header.astro';
 			border-radius: 14px;
 			padding: 1em 1.1em 1.1em;
 			border-top: 6px solid var(--seat);
-			box-shadow: var(--box-shadow);
+			box-shadow: var(--shadow-1);
 		}
 		.seat-0 { --seat: #c0392b; }
 		.seat-1 { --seat: #2e6bd6; }
@@ -326,7 +316,7 @@ import Header from '../components/Header.astro';
 			font-size: 0.65em;
 			padding: 0.1em 0.6em;
 			border-radius: 999px;
-			background: rgb(var(--gray-light));
+			background: var(--color-line);
 			white-space: nowrap;
 		}
 		.badge.crown {
@@ -344,7 +334,7 @@ import Header from '../components/Header.astro';
 			color: var(--seat);
 		}
 		.score span {
-			color: rgb(var(--gray));
+			color: var(--color-ink-muted);
 			font-size: 0.8em;
 		}
 		.stats {
@@ -355,7 +345,7 @@ import Header from '../components/Header.astro';
 		}
 		.stats dt {
 			font-size: 0.55em;
-			color: rgb(var(--gray));
+			color: var(--color-ink-muted);
 			text-transform: uppercase;
 			letter-spacing: 0.04em;
 			line-height: 1.2;
@@ -393,7 +383,7 @@ import Header from '../components/Header.astro';
 			padding-left: 1.6em;
 			max-height: 260px;
 			overflow-y: auto;
-			color: rgb(var(--gray));
+			color: var(--color-ink-muted);
 		}
 	}
 </style>
