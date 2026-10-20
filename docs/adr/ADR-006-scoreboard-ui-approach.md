@@ -46,9 +46,10 @@ winner, show why a command was refused, and list the event log.
   image scan or the lockfile to track, and the container image stays the same.
 - Replacing the page, or adding a second front end (for example a CLI), reuses
   the same app-layer functions and tests. Only drawing code would be rewritten.
-- Wiring in the page script is not covered by automated tests. It was checked
-  by hand in a browser. A browser test (Playwright) in CI is the next step if
-  the page grows, and is a reasonable follow-up issue.
+- The page script is covered by a Playwright end-to-end test in CI (#72) that
+  plays a short game against the production server build. It found a real bug
+  on its first run: a refused start was reported inside the hidden game section,
+  so the message was invisible.
 - Hand-written DOM code gets verbose as screens multiply. If the UI grows past a
   few views, adopt a framework island at that point, with this ADR superseded.
 - Because games live only in the visitor's browser, the server's health endpoint

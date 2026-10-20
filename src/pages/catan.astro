@@ -12,6 +12,7 @@ import Header from '../components/Header.astro';
 	<body>
 		<Header />
 		<main class="catan">
+			<p id="message" class="message" role="status" aria-live="polite"></p>
 			<section id="setup" class="setup">
 				<h1>Catan scoreboard</h1>
 				<p class="lede">
@@ -29,7 +30,6 @@ import Header from '../components/Header.astro';
 					<h1>Catan scoreboard</h1>
 					<button id="new-game" type="button" class="ghost">New game</button>
 				</div>
-				<p id="message" class="message" role="status" aria-live="polite"></p>
 				<div id="players" class="players"></div>
 				<details class="history" open>
 					<summary>Event log <span id="event-count"></span></summary>
@@ -272,10 +272,15 @@ import Header from '../components/Header.astro';
 			justify-content: space-between;
 		}
 		.message {
-			min-height: 1.7em;
-			margin: 0.4em 0 1em;
-			color: #b03a2e;
-			font-size: 0.9em;
+			margin: 0 0 1em;
+			padding: 0.5em 0.9em;
+			border-radius: 8px;
+			background: #fdecea;
+			color: #9b2c22;
+			font-size: 0.85em;
+		}
+		.message:empty {
+			display: none;
 		}
 		.players {
 			display: grid;
