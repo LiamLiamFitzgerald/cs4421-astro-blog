@@ -297,3 +297,28 @@ test.describe("Feature: harbours", () => {
     await expect(page.locator("#play-board-list li", { hasText: /harbour by / })).toHaveCount(9);
   });
 });
+
+test.describe("Feature: trading between players", () => {
+  test("given an offer, the device passes to the other player, who can accept or decline", async ({ page }) => {
+    await startPlay(page);
+    await playOpening(page);
+    await nextDice(page, 2, 1);
+    await page.getByRole("button", { name: "Roll the dice" }).click();
+
+    await page.locator("summary", { hasText: "Offer a trade to another player" }).click();
+    const offer = page.locator(".offer__form");
+    await expect(offer.getByRole("button", { name: "Offer trade" })).toBeDisabled();
+    await offer.getByRole("button", { name: "You give: one more lumber" }).click();
+    await offer.getByRole("button", { name: "You get: one more ore" }).click();
+    await offer.getByRole("button", { name: "Offer trade" }).click();
+
+    await expect(turnTitle(page)).toHaveText("Ben, you have a trade offer");
+    await expect(page.locator(".response__terms")).toHaveText("Ana offers 1 lumber for your 1 ore.");
+    await expect(page.locator("#announcer")).toContainText("Ana offered Ben 1 lumber for 1 ore");
+
+    await page.getByRole("button", { name: "Decline" }).click();
+    await expect(turnTitle(page)).toHaveText("Ana's turn");
+    await expect(page.locator("#announcer")).toContainText("Ben declined Ana's trade");
+    await expect(page.getByRole("button", { name: "End turn" })).toBeVisible();
+  });
+});

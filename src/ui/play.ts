@@ -41,7 +41,7 @@ import {
 	piecesLeft,
 	points,
 } from '../lib/games/catan-play/queries';
-import { DEV_CARD_COST, emptyHand, handSize, missing, type Piece, RESOURCES, type Resource } from '../lib/games/catan-play/resources';
+import { DEV_CARD_COST, emptyHand, type Hand, handSize, missing, type Piece, RESOURCES, type Resource } from '../lib/games/catan-play/resources';
 import type { PlayState } from '../lib/games/catan-play/state';
 import { TOPOLOGY } from '../lib/games/catan-play/topology';
 import { WINNING_POINTS } from '../lib/games/catan/score';
@@ -184,7 +184,7 @@ export function createPlayView(
 		const next = actingPlayer(state);
 		const step = expectedStep(state);
 		if (state.winner) parts.push(`${state.winner} wins with ${points(state, state.winner)} points.`);
-		else if (next && (step === 'discard' || step === 'move-robber' || step === 'steal' || step === 'place-free-road')) {
+		else if (next && step && step !== 'roll' && step !== 'build-or-end' && step !== 'place-settlement' && step !== 'place-road') {
 			parts.push(`${next}: ${describeStep(step)}`);
 		}
 		else if (next && step && added.some((e) => e.type === 'TurnEnded' || e.type === 'SetupRoadPlaced')) {
@@ -318,7 +318,13 @@ export function createPlayView(
 		const title = el(
 			'h2',
 			'turn__title',
-			state.winner ? 'Game over' : step === 'discard' ? `${actor} must discard` : `${player}'s turn`,
+			state.winner
+				? 'Game over'
+				: step === 'discard'
+					? `${actor} must discard`
+					: step === 'respond-trade'
+						? `${actor}, you have a trade offer`
+						: `${player}'s turn`,
 		);
 		title.id = 'turn-title';
 		head.append(badge, title);
@@ -359,6 +365,9 @@ export function createPlayView(
 			}
 			actions.append(group);
 		}
+		if (step === 'respond-trade' && state.pending?.kind === 'respond-trade') {
+			actions.append(responsePanel(state, state.pending));
+		}
 		if (step === 'roll') {
 			const roll = button('Roll the dice', 'dice', 'button button--primary');
 			roll.addEventListener('click', () => void run({ type: 'RollDice', player, dice: [rollDie(), rollDie()] }));
@@ -398,14 +407,17 @@ export function createPlayView(
 				builds.append(b);
 			}
 			builds.append(buyCardButton(state, player));
-			actions.append(builds, tradeForm(state, player));
+			actions.append(builds, tradeForm(state, player), offerForm(state, player));
+			const cards = devCardPanel(state, player);
+			if (cards) actions.append(cards);
 			const end = button('End turn', null, 'button button--primary turn__end');
 			end.addEventListener('click', () => void run({ type: 'EndTurn', player }));
 			actions.append(end);
 		}
-		if (step === 'roll' || step === 'build-or-end') {
-			const hand = devCardPanel(state, player);
-			if (hand) actions.append(hand);
+		if (step === 'roll') {
+			// Cards can be played before rolling (a knight, say).
+			const cards = devCardPanel(state, player);
+			if (cards) actions.append(cards);
 		}
 		parts.push(actions);
 		return parts;
@@ -534,6 +546,92 @@ export function createPlayView(
 		// Rows must exist before the first update.
 		queueMicrotask(update);
 		return form;
+	}
+
+	/** Up/down steppers for an amount of each resource. Returns the element and a reader. */
+	function resourcePicker(label: string, limit: (r: Resource) => number, onChange: () => void) {
+		const chosen: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+		const group = el('fieldset', 'picker');
+		group.append(el('legend', 'picker__legend', label));
+		for (const r of RESOURCES) {
+			const max = limit(r);
+			const row = el('div', 'discard__row');
+			const name = el('span', 'discard__name');
+			name.append(iconElement(RESOURCE_ICONS[r]), document.createTextNode(r));
+			const less = button('−', null, 'button button--small');
+			less.setAttribute('aria-label', `${label}: one fewer ${r}`);
+			const count = el('output', 'discard__count numeric', '0');
+			const more = button('+', null, 'button button--small');
+			more.setAttribute('aria-label', `${label}: one more ${r}`);
+			const sync = () => {
+				count.textContent = String(chosen[r]);
+				less.disabled = chosen[r] === 0;
+				more.disabled = chosen[r] >= max;
+			};
+			less.addEventListener('click', () => {
+				chosen[r] -= 1;
+				sync();
+				onChange();
+			});
+			more.addEventListener('click', () => {
+				chosen[r] += 1;
+				sync();
+				onChange();
+			});
+			sync();
+			row.append(name, less, count, more);
+			group.append(row);
+		}
+		return { element: group, value: () => ({ ...chosen }) };
+	}
+
+	/** Offer a trade to another player; tucked away until opened (progressive disclosure). */
+	function offerForm(state: PlayState, player: string): HTMLElement {
+		const details = el('details', 'offer');
+		details.append(el('summary', undefined, 'Offer a trade to another player'));
+		const others = state.players.filter((p) => p !== player);
+		const form = el('form', 'offer__form');
+		const to = el('select', 'input trade__select');
+		to.setAttribute('aria-label', 'Trade with');
+		for (const p of others) to.append(new Option(p, p));
+		const held = state.hands[player] ?? emptyHand;
+		const submit = button('Offer trade', null, 'button button--small');
+		submit.type = 'submit';
+		const check = () => {
+			const total = (h: Record<Resource, number>) => RESOURCES.reduce((n, r) => n + h[r], 0);
+			submit.disabled = total(give.value()) === 0 || total(get.value()) === 0;
+		};
+		const give = resourcePicker('You give', (r) => held[r], check);
+		const get = resourcePicker('You get', () => 19, check);
+		const who = el('label', 'offer__to');
+		who.append(document.createTextNode('Trade with '), to);
+		form.append(who, give.element, get.element, submit);
+		check();
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			void run({ type: 'ProposeTrade', player, to: to.value, give: give.value(), get: get.value() });
+		});
+		details.append(form);
+		return details;
+	}
+
+	/** The recipient sees the offer and answers it. */
+	function responsePanel(state: PlayState, offer: { from: string; to: string; give: Hand; get: Hand }): HTMLElement {
+		const panel = el('div', 'response');
+		panel.append(
+			el('p', 'response__terms', `${offer.from} offers ${describeHand(offer.give)} for your ${describeHand(offer.get)}.`),
+		);
+		const short = missing(state.hands[offer.to] ?? emptyHand, offer.get);
+		const accept = button('Accept trade', 'check', 'button button--primary');
+		accept.disabled = handSize(short) > 0;
+		accept.addEventListener('click', () => void run({ type: 'AcceptTrade', player: offer.to }));
+		const decline = button('Decline', 'close', 'button');
+		decline.addEventListener('click', () => void run({ type: 'DeclineTrade', player: offer.to }));
+		const buttons = el('div', 'response__buttons');
+		buttons.append(accept, decline);
+		panel.append(buttons);
+		if (handSize(short) > 0) panel.append(el('p', 'build__note', `You need ${describeHand(short)} more to accept.`));
+		return panel;
 	}
 
 	function tradeForm(state: PlayState, player: string): HTMLElement {
