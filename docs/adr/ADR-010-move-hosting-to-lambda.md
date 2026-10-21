@@ -70,9 +70,11 @@ browser error reports. That is a workload that suits per-request pricing.
 
 - **The adapter comes from public.ecr.aws, which rate-limits anonymous pulls.**
   The first CI run failed with `429 Too Many Requests` because GitHub's shared
-  runners hit that limit. Controls: the adapter is only in the `lambda` stage,
-  CI retries that build with a back-off, and the deploy workflow signs in to
-  ECR Public first, which raises the limit.
+  runners hit that limit, and retries with a back-off did not get through.
+  Controls: the adapter is only in the `lambda` stage, so the normal image
+  build (a required CI step) never pulls it; CI still tries the Lambda build
+  but as a non-blocking step; and the deploy workflow signs in to ECR Public
+  first, which raises the limit, so the build that matters is authenticated.
 
 ## Alternatives considered
 
