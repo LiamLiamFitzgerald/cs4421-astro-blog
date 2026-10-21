@@ -27,9 +27,9 @@ const practices = [
 	},
 	{
 		title: 'Shipped as a container',
-		body: 'A server-rendered app with a health check and JSON logs, defined as infrastructure code for AWS Fargate.',
-		href: adr('ADR-001-transition-to-ssr-and-containers'),
-		ref: 'ADR-001',
+		body: 'One Docker image with a health check and JSON logs, run on AWS Lambda with canary deploys and automatic rollback.',
+		href: adr('ADR-010-move-hosting-to-lambda'),
+		ref: 'ADR-010',
 	},
 	{
 		title: 'Released from history',
