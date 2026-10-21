@@ -3,54 +3,75 @@
  * and motion. Components use these variables, never raw values. See ADR-007.
  */
 :root {
-	/* Surfaces: ivory and parchment, kept quiet so the board carries the colour. */
-	--color-bg: #f6f0df;
-	--color-surface: #fbf7ec;
-	--color-surface-sunk: #ede3c8;
-	--color-line: #d8cba8;
-	--color-line-strong: #b9a87f;
+	/*
+	 * Colour roles. Each colour has one job; components use the role, never a
+	 * raw value. The interface stays calm and neutral so the board carries the
+	 * colour. See ADR-007.
+	 */
 
-	/* Text */
-	--color-ink: #2b2419;
-	--color-ink-muted: #665a45;
-	--color-ink-inverse: #f6f0df;
+	/* Backgrounds: parchment page, ivory surfaces, a sunk tone for wells. */
+	--color-bg: #f5efe0;
+	--color-surface: #fbf8ef;
+	--color-surface-raised: #fffdf7;
+	--color-surface-sunk: #ece4cf;
+	/* Sage: secondary surfaces and quiet highlights (the active player, selected options). */
+	--color-sage: #c9d3b6;
+	--color-sage-tint: #e1e7d3;
 
-	/* Brand */
-	--color-forest: #1e3a2a;
-	--color-forest-strong: #142a1e;
-	--color-forest-tint: #dfe6d5;
-	--color-terracotta: #9f5236;
-	--color-terracotta-strong: #84422a;
-	--color-terracotta-tint: #f2ddd1;
-	--color-gold: #b8892b;
-	--color-gold-tint: #f4e6c2;
+	/* Text and lines: warm charcoal, stone grey. */
+	--color-ink: #2d2a24;
+	--color-ink-muted: #69655a;
+	--color-ink-disabled: #77715f;
+	--color-ink-inverse: #f7f2e4;
+	--color-line: #ddd4bf;
+	--color-line-strong: #bcb197;
+
+	/* Forest: navigation, primary actions and strong anchors. */
+	--color-forest: #1f3b2c;
+	--color-forest-strong: #152a1f;
+	--color-forest-tint: var(--color-sage-tint);
+
+	/* Accents, from the board's materials. */
+	--color-terracotta: #a65a3d;
+	--color-terracotta-strong: #8a4630;
+	--color-terracotta-tint: #f1ded3;
+	--color-wheat: #c99a2e;
+	--color-wheat-tint: #f3e6c4;
+	--color-slate: #5d6f80;
+	--color-sand: #d8c79c;
+	--color-gold: var(--color-wheat);
+	--color-gold-tint: var(--color-wheat-tint);
 
 	/* Feedback */
-	--color-success: #2e6b3f;
-	--color-success-tint: #e1ecd8;
+	--color-success: #2f5e3a;
+	--color-success-tint: var(--color-sage-tint);
 	--color-danger: #9b3324;
-	--color-danger-tint: #f6dcd6;
+	--color-danger-strong: #7f2919;
+	--color-danger-tint: #f4ddd6;
 	--color-focus: #2f6e8e;
 
-	/* Board: the one colourful area of the interface. */
-	--terrain-forest: #2e6b3f;
-	--terrain-pasture: #93bd5b;
-	--terrain-fields: #e1b649;
-	--terrain-hills: #c46a3f;
-	--terrain-mountains: #8b8f94;
-	--terrain-desert: #dcc894;
-	--color-sea: #2f6e8e;
-	--color-sea-deep: #24566f;
-	--color-token: #fbf3dc;
-	--color-token-red: #b42f22;
+	/* Board: the one colourful object on every screen. */
+	--terrain-forest: #2f5e3a;
+	--terrain-pasture: #9fb37a;
+	--terrain-fields: #dbb447;
+	--terrain-hills: #b8643e;
+	--terrain-mountains: #7a8796;
+	--terrain-desert: #e0d2a6;
+	--color-sea: #3a6f87;
+	--color-sea-deep: #2b5568;
+	--color-token: #fbf5e3;
+	--color-token-edge: #d9ccaa;
+	--color-token-red: #a8301f;
 
-	/* Player seats. Always paired with a seat number, never colour alone. */
-	--seat-1: #b8392b;
-	--seat-2: #2d5f9a;
+	/* Player seats. Always shown with the seat number, never colour alone.
+	   Each passes 4.5:1 against white numerals and reads on every terrain
+	   thanks to the ivory outline on pieces. */
+	--seat-1: #b33a2a;
+	--seat-2: #2c5c9c;
 	--seat-3: #a35a0e;
-	--seat-4: #3f7d4e;
-	--seat-5: #6f4a8e;
-	--seat-6: #7a5a3a;
+	--seat-4: #2b6f73;
+	--seat-5: #6b4a8c;
+	--seat-6: #7a5633;
 
 	/* Type: Alegreya for headings, Alegreya Sans for the interface. Scale ratio 1.25. */
 	--font-heading: var(--font-display), Georgia, serif;
@@ -81,8 +102,10 @@
 	--radius-full: 999px;
 
 	/* Shadows: warm-tinted and low, so surfaces read as paper on a table. */
-	--shadow-1: 0 1px 0 rgb(43 36 25 / 0.05), 0 1px 3px rgb(43 36 25 / 0.08);
-	--shadow-2: 0 2px 4px rgb(43 36 25 / 0.08), 0 12px 32px rgb(43 36 25 / 0.16);
+	--shadow-1: 0 1px 2px rgb(45 42 36 / 0.06);
+	--shadow-2: 0 2px 4px rgb(45 42 36 / 0.08), 0 12px 32px rgb(45 42 36 / 0.16);
+	/* The board is a physical object on the table. */
+	--shadow-board: 0 2px 3px rgb(45 42 36 / 0.12), 0 14px 28px rgb(45 42 36 / 0.16);
 
 	--duration-fast: 120ms;
 	--duration-medium: 240ms;

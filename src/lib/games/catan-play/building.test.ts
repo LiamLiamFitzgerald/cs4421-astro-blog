@@ -388,7 +388,34 @@ describe("Feature: winning", () => {
   });
 });
 
+describe("Feature: pieces left", () => {
+  it("counts only the player's own roads and buildings", () => {
+    const state = anaToBuild();
+    const before = piecesLeft(state, "ana");
+    const benRoad = legalRoads(state, "ben")[0] ?? -1;
+    const withBen = { ...state, roads: { ...state.roads, [benRoad]: "ben" } };
+    expect(piecesLeft(withBen, "ana")).toEqual(before);
+    expect(piecesLeft(withBen, "ben").road).toBe(before.road - 1);
+  });
+});
+
 describe("Feature: build options for the UI", () => {
+  it("given no pieces of a kind left, that option is not allowed even when affordable", () => {
+    const state = anaToBuild();
+    const spare = TOPOLOGY.vertices.filter((v) => !state.buildings[v.id]).slice(-4);
+    const full = { ...state, buildings: { ...state.buildings, ...Object.fromEntries(spare.map((v) => [v.id, { player: "ana", kind: "city" as const }])) } };
+    const city = buildOptions(full, "ana").find((o) => o.piece === "city");
+    expect(city).toMatchObject({ piecesLeft: 0, allowed: false });
+    expect(city?.spots.length).toBeGreaterThan(0);
+  });
+
+  it("given nowhere legal to build, that option is not allowed", () => {
+    const state = anaToBuild();
+    const noSettlements = { ...state, buildings: Object.fromEntries(Object.entries(state.buildings).filter(([, b]) => b.player !== "ana")) };
+    const city = buildOptions(noSettlements, "ana").find((o) => o.piece === "city");
+    expect(city).toMatchObject({ spots: [], allowed: false });
+  });
+
   it("given ana's build step and plenty of cards, every piece is allowed with its legal spots", () => {
     const options = buildOptions(anaToBuild(), "ana");
     expect(options.map((o) => o.piece)).toEqual(["road", "settlement", "city"]);
