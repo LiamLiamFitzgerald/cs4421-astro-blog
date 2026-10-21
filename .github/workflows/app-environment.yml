@@ -1,12 +1,12 @@
-name: App Environment (ECS Fargate)
+name: App Environment (Lambda)
 
-# Lifecycle of the billable AppServiceStack (ADR-001). Roughly $1.40/day while
-# it exists (ALB, Fargate task, public IPv4 addresses), so it is never deployed
-# automatically:
-#   deploy   - build the image, deploy, smoke-test /api/health, leave it running
-#   rehearse - deploy, smoke-test, then ALWAYS destroy (cheap proof it works)
+# Lifecycle of AppLambdaStack (ADR-010): the app image on AWS Lambda behind
+# CloudFront. Nothing runs while idle, so it costs close to nothing, but it is
+# still only deployed on demand:
+#   deploy   - build the image, deploy (CodeDeploy canary), smoke-test /api/health
+#   rehearse - deploy, smoke-test, then ALWAYS destroy (proof it works)
 #   destroy  - delete the stack
-# A nightly schedule also destroys it, so a forgotten stack costs at most a day.
+# The nightly safety-net destroy used for Fargate (ADR-001) is no longer needed.
 on:
   workflow_dispatch:
     inputs:
@@ -15,8 +15,6 @@ on:
         type: choice
         options: [deploy, rehearse, destroy]
         default: rehearse
-  schedule:
-    - cron: "0 1 * * *" # 01:00 UTC every night: safety-net destroy
 
 permissions:
   contents: read
@@ -26,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ACTION: ${{ github.event.inputs.action || 'destroy' }}
+  ACTION: ${{ github.event.inputs.action }}
 
 jobs:
   environment:
@@ -54,16 +52,16 @@ jobs:
         run: npm ci
         working-directory: cdk
 
-      - name: Deploy with CDK (builds and pushes the image)
+      - name: Deploy with CDK (builds and pushes the image, canary via CodeDeploy)
         if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
-        run: npx cdk deploy AppServiceStack --require-approval never --outputs-file outputs.json
+        run: npx cdk deploy AppLambdaStack --require-approval never --outputs-file outputs.json
         working-directory: cdk
 
       - name: Smoke test /api/health
         if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
         working-directory: cdk
         run: |
-          URL=$(node -p "require('./outputs.json').AppServiceStack.HealthUrl")
+          URL=$(node -p "require('./outputs.json').AppLambdaStack.HealthUrl")
           echo "Checking $URL"
           for i in $(seq 1 20); do
             CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' "$URL" || true)
@@ -73,8 +71,8 @@ jobs:
           echo "Health check failed" >&2
           exit 1
 
-      - name: Destroy AppServiceStack
-        # Runs for destroy, the nightly schedule, and always after a rehearsal.
+      - name: Destroy AppLambdaStack
+        # Runs for destroy, and always after a rehearsal.
         if: always() && (env.ACTION == 'destroy' || env.ACTION == 'rehearse')
-        run: npx cdk destroy AppServiceStack --force
+        run: npx cdk destroy AppLambdaStack --force
         working-directory: cdk
