@@ -1,4 +1,5 @@
 import type { PlayerId } from "../catan/events";
+import type { DevCard } from "./dev-cards";
 import type { Hand, Piece, Resource } from "./resources";
 import type { Step } from "./state";
 
@@ -16,7 +17,7 @@ export type PlayViolation =
   | { readonly code: "TOO_CLOSE_TO_SETTLEMENT" }
   | { readonly code: "ROAD_NOT_BESIDE_NEW_SETTLEMENT" }
   | { readonly code: "INVALID_DICE"; readonly dice: readonly number[] }
-  | { readonly code: "CANNOT_AFFORD"; readonly piece: Piece; readonly missing: Hand }
+  | { readonly code: "CANNOT_AFFORD"; readonly piece: Piece | "development-card"; readonly missing: Hand }
   | { readonly code: "NO_PIECES_LEFT"; readonly piece: Piece }
   | { readonly code: "ROAD_NOT_CONNECTED" }
   | { readonly code: "SETTLEMENT_NOT_ON_ROAD" }
@@ -29,4 +30,8 @@ export type PlayViolation =
   | { readonly code: "NOT_IN_HAND" }
   | { readonly code: "ROBBER_MUST_MOVE" }
   | { readonly code: "NOT_A_VICTIM"; readonly victims: readonly PlayerId[] }
-  | { readonly code: "INVALID_PICK" };
+  | { readonly code: "INVALID_PICK" }
+  | { readonly code: "DECK_EMPTY" }
+  | { readonly code: "NO_SUCH_CARD"; readonly card: DevCard }
+  | { readonly code: "CARD_TOO_NEW"; readonly card: DevCard }
+  | { readonly code: "ALREADY_PLAYED_CARD" };

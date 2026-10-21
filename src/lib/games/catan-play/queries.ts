@@ -13,6 +13,7 @@ import {
   RESOURCES,
   type Resource,
 } from "./resources";
+import type { DevCard } from "./dev-cards";
 import type { PlayState, Step } from "./state";
 import { type EdgeId, TOPOLOGY, type VertexId } from "./topology";
 
@@ -258,9 +259,55 @@ export function longestRoadLength(state: PlayState, player: PlayerId): number {
 }
 
 /** Victory points: 1 per settlement, 2 per city, 2 for Longest Road. */
-export function points(state: PlayState, player: PlayerId): number {
+/** Points everyone can see: buildings, Longest Road and Largest Army. */
+export function visiblePoints(state: PlayState, player: PlayerId): number {
   const mine = Object.values(state.buildings).filter((b) => b.player === player);
   return (
-    mine.reduce((sum, b) => sum + (b.kind === "city" ? 2 : 1), 0) + (state.longestRoad === player ? AWARD_POINTS : 0)
+    mine.reduce((sum, b) => sum + (b.kind === "city" ? 2 : 1), 0) +
+    (state.longestRoad === player ? AWARD_POINTS : 0) +
+    (state.largestArmy === player ? AWARD_POINTS : 0)
   );
+}
+
+/** Victory point cards a player holds (hidden from the others until they win). */
+export function hiddenPoints(state: PlayState, player: PlayerId): number {
+  return (state.devCards[player] ?? []).filter((c) => c.card === "victory-point").length;
+}
+
+/** All of a player's points, including hidden victory point cards. Used to decide the winner. */
+export function points(state: PlayState, player: PlayerId): number {
+  return visiblePoints(state, player) + hiddenPoints(state, player);
+}
+
+// ------------------------------------------------------------ development cards
+
+/** The first card of this kind the player may play now (bought before this turn), or null. */
+export function playableCardIndex(state: PlayState, player: PlayerId, card: DevCard): number {
+  return (state.devCards[player] ?? []).findIndex((c) => c.card === card && c.boughtOnTurn < state.turn);
+}
+
+export interface DevCardOption {
+  readonly card: DevCard;
+  /** How many of this card the player holds. */
+  readonly held: number;
+  readonly allowed: boolean;
+  /** Why it cannot be played now, when not allowed. */
+  readonly reason: "victory-points-are-automatic" | "bought-this-turn" | "one-per-turn" | "not-now" | null;
+}
+
+/** For each card a player holds: whether they can play it now, and why not. Used by the UI. */
+export function devCardOptions(state: PlayState, player: PlayerId): DevCardOption[] {
+  const held = state.devCards[player] ?? [];
+  const kinds = [...new Set(held.map((c) => c.card))];
+  const step = expectedStep(state);
+  const theirMoment = currentPlayer(state) === player && (step === "roll" || step === "build-or-end");
+  return kinds.map((card) => {
+    const count = held.filter((c) => c.card === card).length;
+    let reason: DevCardOption["reason"] = null;
+    if (card === "victory-point") reason = "victory-points-are-automatic";
+    else if (!theirMoment) reason = "not-now";
+    else if (state.playedDevCardThisTurn) reason = "one-per-turn";
+    else if (playableCardIndex(state, player, card) < 0) reason = "bought-this-turn";
+    return { card, held: count, allowed: reason === null, reason };
+  });
 }

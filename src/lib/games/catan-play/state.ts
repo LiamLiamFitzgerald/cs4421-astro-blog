@@ -1,6 +1,7 @@
 import type { Board } from "../catan/board";
 import type { PlayerId } from "../catan/events";
 import { BANK_START, type Hand, type Resource } from "./resources";
+import type { DevCard, HeldCard } from "./dev-cards";
 import type { EdgeId, VertexId } from "./topology";
 
 export type Phase = "setup" | "roll" | "main" | "finished";
@@ -13,7 +14,8 @@ export type Step =
   | "build-or-end"
   | "discard"
   | "move-robber"
-  | "steal";
+  | "steal"
+  | "place-free-road";
 
 /** Where play returns once the robber has been dealt with. */
 export type Resume = "roll" | "build-or-end";
@@ -27,7 +29,9 @@ export type Pending =
   | { readonly kind: "discard"; readonly owed: Readonly<Record<PlayerId, number>>; readonly resume: Resume }
   | { readonly kind: "move-robber"; readonly resume: Resume }
   /** The robber has moved; the mover picks one of these players to steal from. */
-  | { readonly kind: "steal"; readonly victims: readonly PlayerId[]; readonly resume: Resume };
+  | { readonly kind: "steal"; readonly victims: readonly PlayerId[]; readonly resume: Resume }
+  /** Road Building: place this many more roads for free. */
+  | { readonly kind: "place-free-road"; readonly remaining: number; readonly resume: Resume };
 
 export interface Building {
   readonly player: PlayerId;
@@ -66,6 +70,16 @@ export interface PlayState {
   /** Key ("q,r") of the hex the robber is on; it produces nothing. */
   readonly robber: string | null;
   readonly pending: Pending | null;
+  /** Turns completed since setup; cards bought this turn cannot be played. */
+  readonly turn: number;
+  /** Development cards left to draw, in order. */
+  readonly deck: readonly DevCard[];
+  readonly devCards: Readonly<Record<PlayerId, readonly HeldCard[]>>;
+  /** At most one development card (other than victory points) per turn. */
+  readonly playedDevCardThisTurn: boolean;
+  readonly knightsPlayed: Readonly<Record<PlayerId, number>>;
+  /** Holder of Largest Army, or null while vacant. */
+  readonly largestArmy: PlayerId | null;
   /** Holder of Longest Road, or null while vacant. */
   readonly longestRoad: PlayerId | null;
   readonly winner: PlayerId | null;
@@ -86,6 +100,12 @@ export const initialPlayState: PlayState = {
   lastRoll: null,
   robber: null,
   pending: null,
+  turn: 0,
+  deck: [],
+  devCards: {},
+  playedDevCardThisTurn: false,
+  knightsPlayed: {},
+  largestArmy: null,
   longestRoad: null,
   winner: null,
 };

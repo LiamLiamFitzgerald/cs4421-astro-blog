@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { generateBoard } from "../catan/board";
+import { shuffledDeck } from "./dev-cards";
 import { decide } from "./decide";
 import type { PlayEvent } from "./events";
 import { replayPlay } from "./evolve";
@@ -29,7 +30,7 @@ describe("Feature: starting a played game", () => {
   it("given players and a seed, GameStarted carries the dealt board", () => {
     expect(when([], { type: "StartGame", players: ["ana", "ben"], seed: 9 })).toEqual({
       ok: true,
-      value: [{ type: "GameStarted", players: ["ana", "ben"], board: generateBoard(9) }],
+      value: [{ type: "GameStarted", players: ["ana", "ben"], board: generateBoard(9), deck: shuffledDeck(9) }],
     });
   });
 

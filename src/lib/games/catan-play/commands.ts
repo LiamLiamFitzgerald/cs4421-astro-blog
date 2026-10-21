@@ -20,4 +20,9 @@ export type PlayCommand =
    * `pick` chooses which of the victim's cards is taken (0 to cards − 1, in
    * resource order). The caller draws it at random, so decide stays pure (ADR-011).
    */
-  | { readonly type: "StealFrom"; readonly player: PlayerId; readonly victim: PlayerId; readonly pick: number };
+  | { readonly type: "StealFrom"; readonly player: PlayerId; readonly victim: PlayerId; readonly pick: number }
+  | { readonly type: "BuyDevelopmentCard"; readonly player: PlayerId }
+  | { readonly type: "PlayKnight"; readonly player: PlayerId }
+  | { readonly type: "PlayRoadBuilding"; readonly player: PlayerId }
+  | { readonly type: "PlayYearOfPlenty"; readonly player: PlayerId; readonly resources: readonly [Resource, Resource] }
+  | { readonly type: "PlayMonopoly"; readonly player: PlayerId; readonly resource: Resource };
