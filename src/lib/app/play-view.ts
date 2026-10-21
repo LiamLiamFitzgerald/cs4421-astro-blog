@@ -190,7 +190,7 @@ export function describePlayEvent(event: PlayEvent, state: PlayState): string {
     case "TurnEnded":
       return `${event.player} ended their turn`;
     case "BankTraded":
-      return `${event.player} traded ${BANK_TRADE_RATE} ${event.give} for 1 ${event.get}`;
+      return `${event.player} traded ${event.rate ?? BANK_TRADE_RATE} ${event.give} for 1 ${event.get}`;
     case "CardsDiscarded":
       return `${event.player} discarded ${describeHand(event.cards)}`;
     case "RobberMoved":
@@ -212,9 +212,14 @@ export function describePlayEvent(event: PlayEvent, state: PlayState): string {
   }
 }
 
-/** Resources a player can offer the bank right now. */
-export function tradeableResources(h: Hand): Resource[] {
-  return RESOURCES.filter((r) => h[r] >= BANK_TRADE_RATE);
+/** Resources a player can offer the bank right now, given their rate for each (4 unless a harbour helps). */
+export function tradeableResources(h: Hand, rate: (r: Resource) => number = () => BANK_TRADE_RATE): Resource[] {
+  return RESOURCES.filter((r) => h[r] >= rate(r));
+}
+
+/** "3:1 harbour" or "2:1 wool harbour". */
+export function describeHarbour(kind: Resource | "any"): string {
+  return kind === "any" ? "3:1 harbour" : `2:1 ${kind} harbour`;
 }
 
 /** "Forest 8": a hex by its terrain and number. */

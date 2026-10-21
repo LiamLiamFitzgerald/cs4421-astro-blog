@@ -1,6 +1,7 @@
 import type { Board } from "../catan/board";
 import type { PlayerId } from "../catan/events";
 import type { DevCard } from "./dev-cards";
+import type { Harbour } from "./harbours";
 import type { Hand, Resource } from "./resources";
 import type { EdgeId, VertexId } from "./topology";
 
@@ -12,6 +13,8 @@ export type PlayEvent =
       readonly board: Board;
       /** Development cards in draw order. Absent in games saved before cards existed. */
       readonly deck?: readonly DevCard[];
+      /** Harbours on the coast. Absent in games saved before harbours existed. */
+      readonly harbours?: readonly Harbour[];
     }
   | { readonly type: "SetupSettlementPlaced"; readonly player: PlayerId; readonly vertex: VertexId }
   | { readonly type: "SetupRoadPlaced"; readonly player: PlayerId; readonly edge: EdgeId }
@@ -21,8 +24,8 @@ export type PlayEvent =
   | { readonly type: "RoadBuilt"; readonly player: PlayerId; readonly edge: EdgeId; readonly free?: true }
   | { readonly type: "SettlementBuilt"; readonly player: PlayerId; readonly vertex: VertexId }
   | { readonly type: "CityBuilt"; readonly player: PlayerId; readonly vertex: VertexId }
-  /** Four `give` to the bank for one `get` (BANK_TRADE_RATE). */
-  | { readonly type: "BankTraded"; readonly player: PlayerId; readonly give: Resource; readonly get: Resource }
+  /** `rate` of `give` to the bank for one `get` (4, or 3 or 2 at a harbour; absent means 4). */
+  | { readonly type: "BankTraded"; readonly player: PlayerId; readonly give: Resource; readonly get: Resource; readonly rate?: number }
   | { readonly type: "CardsDiscarded"; readonly player: PlayerId; readonly cards: Hand }
   | { readonly type: "RobberMoved"; readonly player: PlayerId; readonly hex: string }
   /** The card that was taken is the fact, not the random pick that chose it. */

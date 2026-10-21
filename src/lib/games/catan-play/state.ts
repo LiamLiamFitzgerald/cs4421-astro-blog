@@ -2,6 +2,7 @@ import type { Board } from "../catan/board";
 import type { PlayerId } from "../catan/events";
 import { BANK_START, type Hand, type Resource } from "./resources";
 import type { DevCard, HeldCard } from "./dev-cards";
+import type { Harbour } from "./harbours";
 import type { EdgeId, VertexId } from "./topology";
 
 export type Phase = "setup" | "roll" | "main" | "finished";
@@ -80,6 +81,7 @@ export interface PlayState {
   readonly knightsPlayed: Readonly<Record<PlayerId, number>>;
   /** Holder of Largest Army, or null while vacant. */
   readonly largestArmy: PlayerId | null;
+  readonly harbours: readonly Harbour[];
   /** Holder of Longest Road, or null while vacant. */
   readonly longestRoad: PlayerId | null;
   readonly winner: PlayerId | null;
@@ -106,6 +108,7 @@ export const initialPlayState: PlayState = {
   playedDevCardThisTurn: false,
   knightsPlayed: {},
   largestArmy: null,
+  harbours: [],
   longestRoad: null,
   winner: null,
 };
