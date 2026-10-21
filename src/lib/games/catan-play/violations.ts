@@ -34,4 +34,6 @@ export type PlayViolation =
   | { readonly code: "DECK_EMPTY" }
   | { readonly code: "NO_SUCH_CARD"; readonly card: DevCard }
   | { readonly code: "CARD_TOO_NEW"; readonly card: DevCard }
-  | { readonly code: "ALREADY_PLAYED_CARD" };
+  | { readonly code: "ALREADY_PLAYED_CARD" }
+  | { readonly code: "INVALID_OFFER"; readonly reason: "unknown-player" | "yourself" | "not-whole-numbers" | "empty-side" }
+  | { readonly code: "RECIPIENT_LACKS_CARDS"; readonly missing: Hand };

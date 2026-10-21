@@ -76,6 +76,8 @@ export function describeStep(step: Step): string {
       return "Choose a player to steal a card from.";
     case "place-free-road":
       return "Place a free road from Road Building.";
+    case "respond-trade":
+      return "Accept or decline the trade offer.";
   }
 }
 
@@ -141,6 +143,15 @@ export function describePlayViolation(v: PlayViolation): string {
       return `You bought that ${CARD_NAMES[v.card].toLowerCase()} card this turn; play it from your next turn.`;
     case "ALREADY_PLAYED_CARD":
       return "You can play only one development card per turn.";
+    case "INVALID_OFFER":
+      return {
+        "unknown-player": "Choose a player in this game to trade with.",
+        yourself: "You cannot trade with yourself.",
+        "not-whole-numbers": "Offer whole numbers of cards.",
+        "empty-side": "A trade needs at least one card on each side.",
+      }[v.reason];
+    case "RECIPIENT_LACKS_CARDS":
+      return `You need ${describeHand(v.missing)} more to accept this trade.`;
   }
 }
 
@@ -209,6 +220,12 @@ export function describePlayEvent(event: PlayEvent, state: PlayState): string {
       return `${event.player} played Year of plenty for ${event.resources[0]} and ${event.resources[1]}`;
     case "MonopolyPlayed":
       return `${event.player} played Monopoly on ${event.resource}`;
+    case "TradeProposed":
+      return `${event.player} offered ${event.to} ${describeHand(event.give)} for ${describeHand(event.get)}`;
+    case "TradeAccepted":
+      return `${event.player} accepted ${event.from}'s trade`;
+    case "TradeDeclined":
+      return `${event.player} declined ${event.from}'s trade`;
   }
 }
 
