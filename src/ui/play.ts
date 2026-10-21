@@ -88,6 +88,29 @@ export function createPlayView(
 	let busy = false;
 	let lastMessage = '';
 	let rolledJustNow = false;
+	/** What the last action changed, so the next render can show it briefly. */
+	let fresh: { vertices: Set<number>; edges: Set<number>; gains: Record<string, Partial<Record<Resource, number>>> } = {
+		vertices: new Set(),
+		edges: new Set(),
+		gains: {},
+	};
+
+	function changes(before: PlayState, after: PlayState) {
+		const changedVertices = Object.keys(after.buildings)
+			.map(Number)
+			.filter((v) => before.buildings[v]?.kind !== after.buildings[v]?.kind);
+		const newEdges = Object.keys(after.roads)
+			.map(Number)
+			.filter((e) => before.roads[e] === undefined);
+		const gains: Record<string, Partial<Record<Resource, number>>> = {};
+		for (const p of after.players) {
+			for (const r of RESOURCES) {
+				const gain = (after.hands[p]?.[r] ?? 0) - (before.hands[p]?.[r] ?? 0);
+				if (gain > 0) gains[p] = { ...gains[p], [r]: gain };
+			}
+		}
+		return { vertices: new Set(changedVertices), edges: new Set(newEdges), gains };
+	}
 
 	const seatOf = (state: PlayState, player: string) => state.players.indexOf(player) + 1;
 
@@ -97,6 +120,7 @@ export function createPlayView(
 		busy = true;
 		section.setAttribute('aria-busy', 'true');
 		try {
+			const before = replayPlay(await store.load(GAME_ID));
 			const result = await executePlayCommand(store, GAME_ID, command);
 			if (!result.ok) {
 				const message = describePlayViolation(result.error);
@@ -110,6 +134,7 @@ export function createPlayView(
 			mode = null;
 			rolledJustNow = command.type === 'RollDice';
 			const { state, events: added } = result.value;
+			fresh = changes(before, state);
 			await render();
 			feedback.announce(announcement(state, added));
 			return null;
@@ -150,11 +175,13 @@ export function createPlayView(
 			seat: seatOf(state, b.player),
 			kind: b.kind,
 			label: `${b.player}'s ${b.kind} at ${describeCorner(state.board, Number(vertex))}`,
+			fresh: fresh.vertices.has(Number(vertex)),
 		}));
 		const roads = Object.entries(state.roads).map(([edge, owner]) => ({
 			edge: Number(edge),
 			seat: seatOf(state, owner),
 			label: `${owner}'s road ${describeEdge(state.board, Number(edge))}`,
+			fresh: fresh.edges.has(Number(edge)),
 		}));
 
 		let targets: BoardOverlay['targets'];
@@ -348,7 +375,7 @@ export function createPlayView(
 	function playerRow(state: PlayState, player: string): HTMLElement {
 		const seat = seatOf(state, player);
 		const isCurrent = currentPlayer(state) === player && !state.winner;
-		const row = el('article', `panel play-player seat-color--${seat}`);
+		const row = el('article', `play-player seat-color--${seat}`);
 		row.classList.toggle('play-player--current', isCurrent);
 		row.classList.toggle('player--winner', state.winner === player);
 		row.setAttribute('aria-label', `${player}${isCurrent ? ', playing now' : ''}`);
@@ -358,7 +385,7 @@ export function createPlayView(
 		badge.setAttribute('aria-hidden', 'true');
 		const score = el('p', 'player__score');
 		const vp = points(state, player);
-		score.append(el('strong', undefined, String(vp)), el('span', undefined, ` of ${WINNING_POINTS} points`));
+		score.append(el('strong', 'numeric', String(vp)), el('span', undefined, ` of ${WINNING_POINTS} points`));
 		head.append(badge, el('h3', 'player__name', player), score);
 
 		const meter = el('div', 'meter');
@@ -372,10 +399,18 @@ export function createPlayView(
 		const hand = state.hands[player] ?? emptyHand;
 		const cards = el('dl', 'hand');
 		cards.setAttribute('aria-label', `${player}'s resources`);
+		const gained = fresh.gains[player] ?? {};
 		for (const r of RESOURCES) {
-			const item = el('div', `hand__item${hand[r] === 0 ? ' hand__item--none' : ''}`);
-			const value = el('dd', 'hand__count');
+			const gain = gained[r] ?? 0;
+			const item = el('div', `hand__item${hand[r] === 0 ? ' hand__item--none' : ''}${gain > 0 ? ' hand__item--gain' : ''}`);
+			const value = el('dd', 'hand__count numeric');
 			value.append(iconElement(RESOURCE_ICONS[r]), document.createTextNode(String(hand[r])));
+			// The roll summary already announces gains, so the badge is visual only.
+			if (gain > 0) {
+				const badge = el('span', 'hand__gain', `+${gain}`);
+				badge.setAttribute('aria-hidden', 'true');
+				value.append(badge);
+			}
 			item.append(value, el('dt', 'hand__name', r));
 			cards.append(item);
 		}
@@ -435,6 +470,7 @@ export function createPlayView(
 		);
 		eventCount.textContent = String(log.length);
 		rolledJustNow = false;
+		fresh = { vertices: new Set(), edges: new Set(), gains: {} };
 	}
 
 	document.addEventListener('keydown', (event) => {

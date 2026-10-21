@@ -85,3 +85,15 @@ describe("Feature: placing pieces on the drawing", () => {
     expect(cornerPoint({ x: 1, y: -1 }, 50)).toEqual({ x: 43.3, y: -25 });
   });
 });
+
+describe("Feature: board depth details", () => {
+  it("draws a bevel inside each tile and a coast line inside the frame", async () => {
+    const { boardView } = await import("./board-view");
+    const { generateBoard } = await import("../games/catan/board");
+    const view = boardView(generateBoard(1), 50);
+    const centre = view.hexes.find((h) => h.key === "0,0");
+    expect(centre?.inner.split(" ")[0]).toBe("0,-43");
+    expect(view.coast.split(" ")).toHaveLength(6);
+    expect(view.coast.split(" ")[0]).toBe("254.5,0");
+  });
+});

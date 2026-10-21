@@ -19,6 +19,8 @@ export interface HexView {
   readonly cy: number;
   /** SVG polygon points, corners clockwise from the top. */
   readonly points: string;
+  /** A slightly smaller outline, drawn as a bevel so tiles read as pieces of card. */
+  readonly inner: string;
   readonly token: number | null;
   /** 6 and 8, the most likely rolls, are printed in red. */
   readonly red: boolean;
@@ -33,6 +35,8 @@ export interface BoardView {
   readonly viewBox: string;
   /** Points of the sea frame around the island. */
   readonly sea: string;
+  /** A fine line just inside the frame, like the edge of a printed map. */
+  readonly coast: string;
 }
 
 const SQRT3 = Math.sqrt(3);
@@ -70,6 +74,7 @@ export function boardView(board: Board, size = 50): BoardView {
       cx,
       cy,
       points: polygon(cx, cy, size * 0.97, -90),
+      inner: polygon(cx, cy, size * 0.86, -90),
       token: hex.token,
       red: hex.token !== null && RED_NUMBERS.includes(hex.token),
       pips: hex.token === null ? 0 : pipCount(hex.token),
@@ -84,6 +89,7 @@ export function boardView(board: Board, size = 50): BoardView {
     hexes,
     viewBox: `${-halfWidth} ${-halfHeight} ${halfWidth * 2} ${halfHeight * 2}`,
     sea: polygon(0, 0, seaRadius, 0),
+    coast: polygon(0, 0, seaRadius - size * 0.16, 0),
   };
 }
 

@@ -97,7 +97,7 @@ import '../styles/board.css';
 
 				<div class="game__side">
 					<h2 class="sr-only">Players</h2>
-					<div id="players" class="players"></div>
+					<div id="players" class="players stack"></div>
 				</div>
 			</div>
 
@@ -128,7 +128,7 @@ import '../styles/board.css';
 				<div class="game__side">
 					<section id="play-turn" class="panel turn" aria-labelledby="turn-title"></section>
 					<h2 class="sr-only">Players</h2>
-					<div id="play-players" class="players"></div>
+					<div id="play-players" class="players stack"></div>
 				</div>
 			</div>
 			<details class="history">
@@ -149,7 +149,7 @@ import '../styles/board.css';
 				</p>
 				<div class="dialog__actions">
 					<button class="button" value="keep" autofocus>Keep playing</button>
-					<button class="button button--primary" value="discard">Discard and start over</button>
+					<button class="button button--danger" value="discard">Discard and start over</button>
 				</div>
 			</form>
 		</dialog>
@@ -171,8 +171,10 @@ import '../styles/board.css';
 		display: grid;
 		gap: var(--space-4);
 	}
+	/* A working screen: a compact heading, so the board gets the space. */
 	.scoreboard h1 {
 		margin: 0;
+		font-size: var(--text-2xl);
 	}
 	.scoreboard .toolbar {
 		display: flex;
@@ -200,7 +202,7 @@ import '../styles/board.css';
 		width: 1.75rem;
 		height: 1.75rem;
 		border-radius: var(--radius-full);
-		color: #fff;
+		color: #fff; /* white numerals: every seat colour passes 4.5:1 */
 		font-weight: 700;
 		font-size: var(--text-s);
 		background: var(--seat-colour, var(--color-ink-muted));
@@ -288,21 +290,24 @@ import '../styles/board.css';
 		border: 1px dashed var(--color-line-strong);
 		border-radius: var(--radius-m);
 	}
+	/* Players share one surface, separated by lines, with a seat-colour edge. */
 	.scoreboard .players {
 		display: grid;
-		gap: var(--space-3);
+	}
+	.scoreboard .game__side {
+		display: grid;
+		gap: var(--space-4);
+		align-content: start;
 	}
 
 	.scoreboard .player {
 		display: grid;
 		gap: var(--space-2);
-		padding: var(--space-3) var(--space-4) var(--space-4);
-		border-left: 5px solid var(--seat-colour);
+		padding: var(--space-3) var(--space-4) var(--space-4) calc(var(--space-4) + 4px);
+		box-shadow: inset 4px 0 0 var(--seat-colour);
 	}
 	.scoreboard .player--winner {
-		border-color: var(--color-gold);
-		border-left-color: var(--seat-colour);
-		box-shadow: 0 0 0 2px var(--color-gold), var(--shadow-1);
+		background: var(--color-wheat-tint);
 	}
 	.scoreboard .player--changed {
 		animation: player-changed var(--duration-medium) var(--ease-out) 2;
@@ -378,7 +383,7 @@ import '../styles/board.css';
 	}
 	.scoreboard .award--winner {
 		background: var(--color-gold-tint);
-		color: #6b4d0f;
+		color: var(--color-ink);
 	}
 	.scoreboard .stats {
 		display: grid;
@@ -443,7 +448,7 @@ import '../styles/board.css';
 		padding: var(--space-2) var(--space-3);
 		border-radius: var(--radius-s);
 		background: var(--color-danger-tint);
-		color: #5e1f15;
+		color: var(--color-danger-strong);
 		font-size: var(--text-s);
 	}
 	.scoreboard .player__feedback[hidden] {
@@ -510,12 +515,16 @@ import '../styles/board.css';
 		border: 1px solid var(--color-line);
 		border-radius: var(--radius-s);
 		cursor: pointer;
-		background: #fffdf7;
+		background: var(--color-surface-raised);
 	}
 	.scoreboard .mode:has(input:checked) {
 		border-color: var(--color-forest);
 		box-shadow: inset 0 0 0 1px var(--color-forest);
-		background: var(--color-forest-tint);
+		background: var(--color-sage-tint);
+	}
+	.scoreboard .mode:has(input:focus-visible) {
+		outline: 3px solid var(--color-focus);
+		outline-offset: 2px;
 	}
 	.scoreboard .mode input {
 		margin-top: 0.3rem;
@@ -540,7 +549,7 @@ import '../styles/board.css';
 		display: grid;
 		gap: var(--space-3);
 		padding: var(--space-4);
-		border-top: 5px solid var(--color-forest);
+		border-top: 3px solid var(--color-forest);
 	}
 	.scoreboard .turn__head {
 		display: flex;
@@ -556,7 +565,7 @@ import '../styles/board.css';
 		padding: 0.1rem var(--space-2);
 		border-radius: var(--radius-full);
 		background: var(--color-gold-tint);
-		color: #6b4d0f;
+		color: var(--color-ink);
 		font-size: var(--text-xs);
 		font-weight: 700;
 	}
@@ -593,7 +602,7 @@ import '../styles/board.css';
 		height: 2.4rem;
 	}
 	.scoreboard .die__face {
-		fill: #fffdf7;
+		fill: var(--color-surface-raised);
 		stroke: var(--color-line-strong);
 		stroke-width: 2;
 	}
@@ -682,11 +691,13 @@ import '../styles/board.css';
 	.scoreboard .play-player {
 		display: grid;
 		gap: var(--space-2);
-		padding: var(--space-3) var(--space-4);
-		border-left: 5px solid var(--seat-colour);
+		padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 4px);
+		box-shadow: inset 4px 0 0 var(--seat-colour);
+		transition: background-color var(--duration-medium) var(--ease-out);
 	}
+	/* The player whose turn it is sits on sage, the colour for "this one". */
 	.scoreboard .play-player--current {
-		box-shadow: 0 0 0 2px var(--color-forest), var(--shadow-1);
+		background: var(--color-sage-tint);
 	}
 	.scoreboard .hand {
 		display: grid;
@@ -700,10 +711,35 @@ import '../styles/board.css';
 		justify-items: center;
 		padding: var(--space-1) 0;
 		border-radius: var(--radius-s);
-		background: var(--color-surface-sunk);
 	}
 	.scoreboard .hand__item--none {
-		opacity: 0.55;
+		color: var(--color-ink-disabled);
+	}
+	.scoreboard .hand__item--none .hand__count {
+		font-weight: 400;
+	}
+	/* Resources just received: a brief wheat glow and a +n badge. */
+	.scoreboard .hand__item--gain {
+		animation: hand-gain 900ms var(--ease-out);
+	}
+	@keyframes hand-gain {
+		from {
+			background: var(--color-wheat-tint);
+		}
+	}
+	.scoreboard .hand__gain {
+		margin-left: 2px;
+		padding: 0 4px;
+		border-radius: var(--radius-s);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		color: var(--color-forest);
+		background: var(--color-wheat-tint);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.scoreboard .hand__item--gain {
+			animation: none;
+		}
 	}
 	.scoreboard .hand__count {
 		display: inline-flex;

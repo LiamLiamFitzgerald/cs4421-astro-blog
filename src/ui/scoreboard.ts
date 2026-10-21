@@ -288,14 +288,14 @@ export function startScoreboard(report: FailureReporter): void {
 
 	function stat(icon: IconName, label: string, value: number) {
 		const item = el('div', 'stat');
-		const dd = el('dd', 'stat__value');
+		const dd = el('dd', 'stat__value numeric');
 		dd.append(iconElement(icon), document.createTextNode(String(value)));
 		item.append(dd, el('dt', 'stat__label', label));
 		return item;
 	}
 
 	function playerPanel(row: ScoreRow, seat: number, over: boolean, changed: boolean) {
-		const panel = el('article', `panel player seat-color--${seat}`);
+		const panel = el('article', `player seat-color--${seat}`);
 		panel.classList.toggle('player--winner', row.isWinner);
 		panel.classList.toggle('player--changed', changed);
 		panel.setAttribute('aria-labelledby', `player-${seat}-name`);
@@ -306,7 +306,7 @@ export function startScoreboard(report: FailureReporter): void {
 		const name = el('h3', 'player__name', row.player);
 		name.id = `player-${seat}-name`;
 		const score = el('p', 'player__score');
-		score.append(el('strong', undefined, String(row.points)), el('span', undefined, ` of ${WINNING_POINTS} points`));
+		score.append(el('strong', 'numeric', String(row.points)), el('span', undefined, ` of ${WINNING_POINTS} points`));
 		head.append(badge, name, score);
 
 		const meter = el('div', 'meter');

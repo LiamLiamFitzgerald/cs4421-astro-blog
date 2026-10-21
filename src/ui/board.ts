@@ -9,8 +9,9 @@ import { TOPOLOGY } from '../lib/games/catan-play/topology';
 
 /** Pieces and clickable spots drawn over the board in play mode. */
 export interface BoardOverlay {
-	readonly buildings: readonly { vertex: number; seat: number; kind: 'settlement' | 'city'; label: string }[];
-	readonly roads: readonly { edge: number; seat: number; label: string }[];
+	/** `fresh` pieces were placed by the last action and get a short placing animation. */
+	readonly buildings: readonly { vertex: number; seat: number; kind: 'settlement' | 'city'; label: string; fresh?: boolean }[];
+	readonly roads: readonly { edge: number; seat: number; label: string; fresh?: boolean }[];
 	/** Legal spots for the current action. Each is a keyboard-focusable button. */
 	readonly targets?: {
 		readonly kind: 'vertex' | 'edge';
@@ -45,14 +46,24 @@ export function renderBoard(
 	target.setAttribute('role', 'img');
 
 	const sea = svg('polygon', { points: view.sea, class: 'board__sea' });
+	const coast = svg('polygon', { points: view.coast, class: 'board__coast' });
 	const tiles = view.hexes.map((hex) => {
 		const group = svg('g', { class: `board__hex board__hex--${hex.terrain}` });
 		const title = svg('title', {});
 		title.textContent = hex.label;
-		group.append(title, svg('polygon', { points: hex.points, class: 'board__tile' }));
+		group.append(
+			title,
+			svg('polygon', { points: hex.points, class: 'board__tile' }),
+			svg('polygon', { points: hex.inner, class: 'board__bevel' }),
+		);
 		group.append(svg('use', { href: `#terrain-${hex.terrain}`, x: hex.cx - 16, y: hex.cy - 38, width: 32, height: 20, class: 'board__glyph' }));
 		if (hex.token !== null) {
-			group.append(svg('circle', { cx: hex.cx, cy: hex.cy + 6, r: 19, class: 'board__token' }));
+			// A token is a small disc: a shadow, the face, and a fine inner ring.
+			group.append(
+				svg('circle', { cx: hex.cx, cy: hex.cy + 7.5, r: 19, class: 'board__token-shadow' }),
+				svg('circle', { cx: hex.cx, cy: hex.cy + 6, r: 19, class: 'board__token' }),
+				svg('circle', { cx: hex.cx, cy: hex.cy + 6, r: 16, class: 'board__token-ring' }),
+			);
 			const number = svg('text', {
 				x: hex.cx,
 				y: hex.cy + 9,
@@ -74,7 +85,7 @@ export function renderBoard(
 		}
 		return group;
 	});
-	target.replaceChildren(defs(), sea, ...tiles, ...(overlay ? drawOverlay(overlay) : []));
+	target.replaceChildren(defs(), sea, coast, ...tiles, ...(overlay ? drawOverlay(overlay) : []));
 
 	if (list) {
 		list.replaceChildren(
@@ -105,23 +116,32 @@ function drawOverlay(overlay: BoardOverlay): SVGElement[] {
 		// Shorten each end so roads stop short of the corners, like the real pieces.
 		const t = 0.17;
 		const line = { x1: a.x + (b.x - a.x) * t, y1: a.y + (b.y - a.y) * t, x2: b.x + (a.x - b.x) * t, y2: b.y + (a.y - b.y) * t };
-		const group = titled(svg('g', { class: `piece piece--road seat-color--${road.seat}` }), road.label);
+		const group = titled(
+			svg('g', { class: `piece piece--road seat-color--${road.seat}${road.fresh ? ' piece--new' : ''}` }),
+			road.label,
+		);
 		group.append(svg('line', { ...line, class: 'piece__road-edge' }), svg('line', { ...line, class: 'piece__road' }));
 		layer.push(group);
 	}
 
+	const buildingLayer: SVGElement[] = [];
 	for (const building of overlay.buildings) {
 		const { x, y } = point(building.vertex);
 		const shape =
 			building.kind === 'city'
-				? 'M-12 8H12V-3H3V-6L-4.5-13L-12-6Z'
-				: 'M-8 7H8V-2L0-9L-8-2Z';
+				? 'M-13 9H13V-3H3V-7L-5-14L-13-7Z'
+				: 'M-9 8H9V-2L0-10L-9-2Z';
 		const group = titled(
 			svg('g', { class: `piece piece--${building.kind} seat-color--${building.seat}`, transform: `translate(${x} ${y})` }),
 			building.label,
 		);
-		group.append(svg('path', { d: shape, class: 'piece__body' }));
-		layer.push(group);
+		// The seat number on the piece means ownership never depends on colour alone.
+		const inner = svg('g', { class: building.fresh ? 'piece__shape piece--new' : 'piece__shape' });
+		const seat = svg('text', { x: 0, y: building.kind === 'city' ? 5.5 : 4.5, class: 'piece__seat' });
+		seat.textContent = String(building.seat);
+		inner.append(svg('path', { d: shape, class: 'piece__body' }), seat);
+		group.append(inner);
+		buildingLayer.push(group);
 	}
 
 	const targets = overlay.targets;
@@ -137,10 +157,12 @@ function drawOverlay(overlay: BoardOverlay): SVGElement[] {
 				spot = svg('g', { class: 'board__target board__target--edge' });
 				// A thin rectangle along the edge is the hit area (a bare line has no
 				// width to click or to report as visible).
-				const ax = a?.x ?? 0;
-				const ay = a?.y ?? 0;
-				const bx = b?.x ?? 0;
-				const by = b?.y ?? 0;
+				// Stop short of the corners, like roads do, so pieces stay visible.
+				const t = 0.2;
+				const ax = (a?.x ?? 0) + ((b?.x ?? 0) - (a?.x ?? 0)) * t;
+				const ay = (a?.y ?? 0) + ((b?.y ?? 0) - (a?.y ?? 0)) * t;
+				const bx = (b?.x ?? 0) + ((a?.x ?? 0) - (b?.x ?? 0)) * t;
+				const by = (b?.y ?? 0) + ((a?.y ?? 0) - (b?.y ?? 0)) * t;
 				const length = Math.hypot(bx - ax, by - ay) || 1;
 				const nx = (-(by - ay) / length) * 11;
 				const ny = ((bx - ax) / length) * 11;
@@ -172,9 +194,10 @@ function drawOverlay(overlay: BoardOverlay): SVGElement[] {
 			});
 			group.append(spot);
 		}
-		layer.push(group);
+		// Edge spots go under the buildings; corner spots go on top of everything.
+		return targets.kind === 'edge' ? [...layer, group, ...buildingLayer] : [...layer, ...buildingLayer, group];
 	}
-	return layer;
+	return [...layer, ...buildingLayer];
 }
 
 /** Small terrain glyphs, drawn once and reused by every hex. */
