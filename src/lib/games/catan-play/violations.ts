@@ -1,4 +1,5 @@
 import type { PlayerId } from "../catan/events";
+import type { Hand, Piece, Resource } from "./resources";
 import type { Step } from "./state";
 
 /** Why a command was refused. */
@@ -14,4 +15,12 @@ export type PlayViolation =
   | { readonly code: "SPOT_TAKEN" }
   | { readonly code: "TOO_CLOSE_TO_SETTLEMENT" }
   | { readonly code: "ROAD_NOT_BESIDE_NEW_SETTLEMENT" }
-  | { readonly code: "INVALID_DICE"; readonly dice: readonly number[] };
+  | { readonly code: "INVALID_DICE"; readonly dice: readonly number[] }
+  | { readonly code: "CANNOT_AFFORD"; readonly piece: Piece; readonly missing: Hand }
+  | { readonly code: "NO_PIECES_LEFT"; readonly piece: Piece }
+  | { readonly code: "ROAD_NOT_CONNECTED" }
+  | { readonly code: "SETTLEMENT_NOT_ON_ROAD" }
+  | { readonly code: "NOT_YOUR_SETTLEMENT" }
+  | { readonly code: "INVALID_TRADE"; readonly reason: "same-resource" | "unknown-resource" }
+  | { readonly code: "NOT_ENOUGH_TO_TRADE"; readonly give: Resource; readonly needed: number }
+  | { readonly code: "BANK_EMPTY"; readonly resource: Resource };

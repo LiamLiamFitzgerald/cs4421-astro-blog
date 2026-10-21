@@ -1,7 +1,9 @@
 import type { PlayerId } from "../catan/events";
 import type { PlayEvent } from "./events";
-import { production, snakeOrder } from "./queries";
-import { addHands, emptyHand, hand, PRODUCES, type Resource, subtractHands } from "./resources";
+import { LONGEST_ROAD_THRESHOLD, resolveExclusiveAward } from "../catan/awards";
+import { WINNING_POINTS } from "../catan/score";
+import { longestRoadLength, points, production, snakeOrder } from "./queries";
+import { addHands, BANK_TRADE_RATE, COSTS, emptyHand, type Hand, hand, PRODUCES, type Resource, subtractHands } from "./resources";
 import { initialPlayState, type PlayState } from "./state";
 import { TOPOLOGY, type VertexId } from "./topology";
 
@@ -41,6 +43,39 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
       return applyRoll(state, event.player, event.dice);
     case "TurnEnded":
       return { ...state, phase: "roll", current: (state.current + 1) % state.players.length };
+    case "RoadBuilt":
+      return afterBuild(
+        pay({ ...state, roads: { ...state.roads, [event.edge]: event.player } }, event.player, COSTS.road),
+        event.player,
+      );
+    case "SettlementBuilt":
+      return afterBuild(
+        pay(
+          { ...state, buildings: { ...state.buildings, [event.vertex]: { player: event.player, kind: "settlement" } } },
+          event.player,
+          COSTS.settlement,
+        ),
+        event.player,
+      );
+    case "CityBuilt":
+      return afterBuild(
+        pay(
+          { ...state, buildings: { ...state.buildings, [event.vertex]: { player: event.player, kind: "city" } } },
+          event.player,
+          COSTS.city,
+        ),
+        event.player,
+      );
+    case "BankTraded": {
+      const given = hand({ [event.give]: BANK_TRADE_RATE });
+      const got = hand({ [event.get]: 1 });
+      const held = state.hands[event.player] ?? emptyHand;
+      return {
+        ...state,
+        hands: { ...state.hands, [event.player]: addHands(subtractHands(held, given), got) },
+        bank: subtractHands(addHands(state.bank, given), got),
+      };
+    }
     default:
       return assertNever(event);
   }
@@ -82,6 +117,29 @@ function applyRoll(state: PlayState, player: PlayerId, dice: readonly [number, n
     bank: subtractHands(state.bank, paid),
     lastRoll: { player, dice: [dice[0], dice[1]], total, produced, shortages },
   };
+}
+
+/** Moves a cost from the player's hand back to the bank. */
+function pay(state: PlayState, player: PlayerId, cost: Hand): PlayState {
+  return {
+    ...state,
+    hands: { ...state.hands, [player]: subtractHands(state.hands[player] ?? emptyHand, cost) },
+    bank: addHands(state.bank, cost),
+  };
+}
+
+/**
+ * Re-works Longest Road (a settlement can break an opponent's road) and ends
+ * the game if the builder has reached the winning total on their turn.
+ */
+function afterBuild(state: PlayState, builder: PlayerId): PlayState {
+  const longestRoad = resolveExclusiveAward({
+    incumbent: state.longestRoad,
+    counts: Object.fromEntries(state.players.map((p) => [p, longestRoadLength(state, p)])),
+    threshold: LONGEST_ROAD_THRESHOLD,
+  });
+  const scored = { ...state, longestRoad };
+  return points(scored, builder) >= WINNING_POINTS ? { ...scored, winner: builder, phase: "finished" } : scored;
 }
 
 /** Moves to the next seat in snake order, or to the first roll once everyone has placed twice. */

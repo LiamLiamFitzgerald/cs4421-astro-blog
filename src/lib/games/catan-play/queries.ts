@@ -1,5 +1,18 @@
 import type { PlayerId } from "../catan/events";
-import { emptyHand, type Hand, hand, PRODUCES, RESOURCES, type Resource } from "./resources";
+import { AWARD_POINTS } from "../catan/awards";
+import {
+  COSTS,
+  emptyHand,
+  type Hand,
+  hand,
+  handSize,
+  missing,
+  type Piece,
+  PIECE_LIMITS,
+  PRODUCES,
+  RESOURCES,
+  type Resource,
+} from "./resources";
 import type { PlayState, Step } from "./state";
 import { type EdgeId, TOPOLOGY, type VertexId } from "./topology";
 
@@ -84,4 +97,117 @@ export function production(
     produced: Object.fromEntries(state.players.map((p) => [p, hand(earned[p] ?? {})])),
     shortages,
   };
+}
+
+// ------------------------------------------------------------ building
+
+/** Pieces a player still has in their supply. A city returns its settlement. */
+export function piecesLeft(state: PlayState, player: PlayerId): Record<Piece, number> {
+  const mine = Object.values(state.buildings).filter((b) => b.player === player);
+  const roads = Object.values(state.roads).filter((owner) => owner === player).length;
+  return {
+    road: PIECE_LIMITS.road - roads,
+    settlement: PIECE_LIMITS.settlement - mine.filter((b) => b.kind === "settlement").length,
+    city: PIECE_LIMITS.city - mine.filter((b) => b.kind === "city").length,
+  };
+}
+
+const blockedFor = (state: PlayState, player: PlayerId, vertex: VertexId) => {
+  const building = state.buildings[vertex];
+  return building !== undefined && building.player !== player;
+};
+
+/** True when a free edge touches the player's building, or their road through a corner no opponent holds. */
+export function connectsToNetwork(state: PlayState, player: PlayerId, edge: EdgeId): boolean {
+  const target = TOPOLOGY.edges[edge];
+  if (!target || state.roads[edge] !== undefined) return false;
+  return target.ends.some((v) => {
+    if (state.buildings[v]?.player === player) return true;
+    if (blockedFor(state, player, v)) return false;
+    return (TOPOLOGY.vertices[v]?.edges ?? []).some((e) => e !== edge && state.roads[e] === player);
+  });
+}
+
+export function legalRoads(state: PlayState, player: PlayerId): EdgeId[] {
+  return TOPOLOGY.edges.filter((e) => connectsToNetwork(state, player, e.id)).map((e) => e.id);
+}
+
+/** Open corners (distance rule) that touch one of the player's roads. */
+export function legalSettlements(state: PlayState, player: PlayerId): VertexId[] {
+  return TOPOLOGY.vertices
+    .filter((v) => isOpenCorner(state, v.id) && v.edges.some((e) => state.roads[e] === player))
+    .map((v) => v.id);
+}
+
+export function legalCities(state: PlayState, player: PlayerId): VertexId[] {
+  return Object.entries(state.buildings)
+    .filter(([, b]) => b.player === player && b.kind === "settlement")
+    .map(([v]) => Number(v));
+}
+
+/** Everything the UI needs to offer or explain a build, from the rules. */
+export interface BuildOption {
+  readonly piece: Piece;
+  readonly cost: Hand;
+  readonly missing: Hand;
+  readonly piecesLeft: number;
+  readonly spots: readonly number[];
+  /** True when it is this player's build step and they could build one now. */
+  readonly allowed: boolean;
+}
+
+export function buildOptions(state: PlayState, player: PlayerId): BuildOption[] {
+  const left = piecesLeft(state, player);
+  const yourStep = expectedStep(state) === "build-or-end" && currentPlayer(state) === player;
+  const spots: Record<Piece, number[]> = {
+    road: legalRoads(state, player),
+    settlement: legalSettlements(state, player),
+    city: legalCities(state, player),
+  };
+  const playerHand = state.hands[player] ?? emptyHand;
+  return (["road", "settlement", "city"] as const).map((piece) => {
+    const short = missing(playerHand, COSTS[piece]);
+    const affordable = handSize(short) === 0;
+    return {
+      piece,
+      cost: COSTS[piece],
+      missing: short,
+      piecesLeft: left[piece],
+      spots: spots[piece],
+      allowed: yourStep && affordable && left[piece] > 0 && spots[piece].length > 0,
+    };
+  });
+}
+
+// ------------------------------------------------------------ scoring
+
+/**
+ * Length of the player's longest continuous road, counted in edges. The road
+ * cannot continue through a corner holding an opponent's building.
+ */
+export function longestRoadLength(state: PlayState, player: PlayerId): number {
+  let best = 0;
+  const walk = (vertex: VertexId, used: Set<EdgeId>) => {
+    best = Math.max(best, used.size);
+    if (used.size > 0 && blockedFor(state, player, vertex)) return;
+    for (const edge of TOPOLOGY.vertices[vertex]?.edges ?? []) {
+      if (state.roads[edge] !== player || used.has(edge)) continue;
+      const ends = TOPOLOGY.edges[edge]?.ends ?? [vertex, vertex];
+      used.add(edge);
+      walk(ends[0] === vertex ? ends[1] : ends[0], used);
+      used.delete(edge);
+    }
+  };
+  for (const v of TOPOLOGY.vertices) {
+    if (v.edges.some((e) => state.roads[e] === player)) walk(v.id, new Set());
+  }
+  return best;
+}
+
+/** Victory points: 1 per settlement, 2 per city, 2 for Longest Road. */
+export function points(state: PlayState, player: PlayerId): number {
+  const mine = Object.values(state.buildings).filter((b) => b.player === player);
+  return (
+    mine.reduce((sum, b) => sum + (b.kind === "city" ? 2 : 1), 0) + (state.longestRoad === player ? AWARD_POINTS : 0)
+  );
 }
