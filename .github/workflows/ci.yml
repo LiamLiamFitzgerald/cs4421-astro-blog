@@ -66,6 +66,18 @@ jobs:
       - name: Build container image
         run: docker build -t catan-app:ci .
 
+      # The Lambda image adds the Web Adapter from public.ecr.aws, which
+      # rate-limits anonymous pulls (shared GitHub runner IPs hit it), so retry
+      # with a back-off before failing.
+      - name: Build Lambda image
+        run: |
+          for attempt in 1 2 3; do
+            docker build --target lambda -t catan-app:lambda-ci . && exit 0
+            echo "Attempt $attempt failed; retrying in $((attempt * 30))s"
+            sleep $((attempt * 30))
+          done
+          exit 1
+
       - name: Install CDK dependencies
         run: npm ci
         working-directory: cdk

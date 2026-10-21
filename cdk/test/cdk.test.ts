@@ -100,6 +100,14 @@ describe('Feature: Lambda app stack (ADR-010)', () => {
     template.resourceCountIs('AWS::ECS::Service', 0);
   });
 
+  it('given the image, it is built from the Dockerfile lambda stage (with the Web Adapter)', () => {
+    const assets = JSON.parse(
+      require('node:fs').readFileSync(require('node:path').join(app.outdir, 'TestAppLambdaStack.assets.json'), 'utf8'),
+    );
+    const images = Object.values(assets.dockerImages ?? {}) as { source: { dockerBuildTarget?: string } }[];
+    expect(images.map((i) => i.source.dockerBuildTarget)).toContain('lambda');
+  });
+
   it('given logs, they are kept for a week and removed with the stack', () => {
     template.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 7 });
   });

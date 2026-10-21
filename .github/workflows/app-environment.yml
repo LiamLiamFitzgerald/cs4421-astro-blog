@@ -48,6 +48,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      # Signed-in pulls from public.ecr.aws (the Lambda Web Adapter) get a much
+      # higher rate limit than anonymous ones.
+      - name: Sign in to Amazon ECR Public
+        if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
+        run: |
+          aws ecr-public get-login-password --region us-east-1 \
+            | docker login --username AWS --password-stdin public.ecr.aws \
+            || echo "Could not sign in; falling back to anonymous pulls"
+
       - name: Install CDK dependencies
         run: npm ci
         working-directory: cdk

@@ -33,8 +33,10 @@ browser error reports. That is a workload that suits per-request pricing.
 
 1. **Run the same container image on AWS Lambda** (`cdk/lib/app-lambda-stack.ts`).
    The AWS Lambda Web Adapter is copied into the image and turns invocations
-   into ordinary HTTP requests to the Node server. No Astro adapter change: the
-   image still runs as a normal container locally and in CI.
+   into ordinary HTTP requests to the Node server. No Astro adapter change. The
+   adapter lives in a separate `lambda` stage of the Dockerfile on top of the
+   normal app image, so `docker build .` (local and CI) never pulls it; the CDK
+   stack builds `--target lambda`.
 2. **Keep the safety properties Fargate gave us:**
    - *Health:* the adapter's readiness check waits for `/api/health`; the
      workflow smoke-tests it after every deploy.
@@ -65,6 +67,12 @@ browser error reports. That is a workload that suits per-request pricing.
   definition), but also less of the container-orchestration platform on show.
   The comparison is kept as part of the project's record in this ADR and
   ADR-001.
+
+- **The adapter comes from public.ecr.aws, which rate-limits anonymous pulls.**
+  The first CI run failed with `429 Too Many Requests` because GitHub's shared
+  runners hit that limit. Controls: the adapter is only in the `lambda` stage,
+  CI retries that build with a back-off, and the deploy workflow signs in to
+  ECR Public first, which raises the limit.
 
 ## Alternatives considered
 

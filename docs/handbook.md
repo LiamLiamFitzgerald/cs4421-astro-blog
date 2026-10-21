@@ -100,6 +100,8 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
   CloudWatch) for `"client error"`. Reports are validated and capped at 4 KB;
   a page sends at most ten.
 - `docker build -t catan-app .` builds the production image; CI builds it too.
+  `docker build --target lambda .` adds the AWS Lambda Web Adapter for Lambda
+  (pulled from public.ecr.aws, which rate-limits anonymous pulls; CI retries).
 - Production runs on AWS Lambda (`cdk/lib/app-lambda-stack.ts`, ADR-010): the
   same image, with the AWS Lambda Web Adapter forwarding requests to the Node
   server, behind a function URL and CloudFront. The adapter waits for

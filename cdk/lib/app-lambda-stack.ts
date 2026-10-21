@@ -26,8 +26,8 @@ export class AppLambdaStack extends cdk.Stack {
     });
 
     const fn = new lambda.DockerImageFunction(this, 'App', {
-      // Built from the Dockerfile at the repo root (respects .dockerignore).
-      code: lambda.DockerImageCode.fromImageAsset('..'),
+      // The Dockerfile's `lambda` stage: the app image plus the Web Adapter.
+      code: lambda.DockerImageCode.fromImageAsset('..', { target: 'lambda' }),
       architecture: lambda.Architecture.X86_64,
       memorySize: 512,
       timeout: cdk.Duration.seconds(15),
