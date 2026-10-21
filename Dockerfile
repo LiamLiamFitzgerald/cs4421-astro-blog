@@ -16,6 +16,10 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=4321
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=build /app/dist ./dist
+# AWS Lambda Web Adapter (ADR-010): when this image runs on Lambda, the adapter
+# turns each invocation into an ordinary HTTP request to the Node server. It
+# does nothing anywhere else, so the same image still runs locally and in CI.
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
 USER node
 EXPOSE 4321
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
