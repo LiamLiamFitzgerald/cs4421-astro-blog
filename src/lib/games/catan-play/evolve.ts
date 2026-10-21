@@ -1,6 +1,6 @@
 import type { PlayerId } from "../catan/events";
 import type { PlayEvent } from "./events";
-import { snakeOrder } from "./queries";
+import { production, snakeOrder } from "./queries";
 import { addHands, emptyHand, hand, PRODUCES, type Resource, subtractHands } from "./resources";
 import { initialPlayState, type PlayState } from "./state";
 import { TOPOLOGY, type VertexId } from "./topology";
@@ -37,6 +37,10 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
         roads: { ...state.roads, [event.edge]: event.player },
         pendingSettlement: null,
       });
+    case "DiceRolled":
+      return applyRoll(state, event.player, event.dice);
+    case "TurnEnded":
+      return { ...state, phase: "roll", current: (state.current + 1) % state.players.length };
     default:
       return assertNever(event);
   }
@@ -61,6 +65,22 @@ function withStartingResources(state: PlayState, player: PlayerId, vertex: Verte
     ...state,
     hands: { ...state.hands, [player]: addHands(state.hands[player] ?? emptyHand, income) },
     bank: subtractHands(state.bank, income),
+  };
+}
+
+function applyRoll(state: PlayState, player: PlayerId, dice: readonly [number, number]): PlayState {
+  const total = dice[0] + dice[1];
+  const { produced, shortages } = production(state, total);
+  const hands = Object.fromEntries(
+    state.players.map((p) => [p, addHands(state.hands[p] ?? emptyHand, produced[p] ?? emptyHand)]),
+  );
+  const paid = state.players.reduce((sum, p) => addHands(sum, produced[p] ?? emptyHand), emptyHand);
+  return {
+    ...state,
+    phase: "main",
+    hands,
+    bank: subtractHands(state.bank, paid),
+    lastRoll: { player, dice: [dice[0], dice[1]], total, produced, shortages },
   };
 }
 

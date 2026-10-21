@@ -6,4 +6,6 @@ import type { EdgeId, VertexId } from "./topology";
 export type PlayEvent =
   | { readonly type: "GameStarted"; readonly players: readonly PlayerId[]; readonly board: Board }
   | { readonly type: "SetupSettlementPlaced"; readonly player: PlayerId; readonly vertex: VertexId }
-  | { readonly type: "SetupRoadPlaced"; readonly player: PlayerId; readonly edge: EdgeId };
+  | { readonly type: "SetupRoadPlaced"; readonly player: PlayerId; readonly edge: EdgeId }
+  | { readonly type: "DiceRolled"; readonly player: PlayerId; readonly dice: readonly [number, number] }
+  | { readonly type: "TurnEnded"; readonly player: PlayerId };

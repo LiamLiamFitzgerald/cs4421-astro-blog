@@ -1,4 +1,5 @@
 import type { PlayerId } from "../catan/events";
+import { emptyHand, type Hand, hand, PRODUCES, RESOURCES, type Resource } from "./resources";
 import type { PlayState, Step } from "./state";
 import { type EdgeId, TOPOLOGY, type VertexId } from "./topology";
 
@@ -43,4 +44,44 @@ export function legalSetupRoads(state: PlayState): EdgeId[] {
   const corner = TOPOLOGY.vertices[state.pendingSettlement];
   // Every edge of a new setup settlement is free (see placeSetupRoad in decide.ts).
   return [...(corner?.edges ?? [])];
+}
+
+/**
+ * What a roll gives each player: 1 per settlement and 2 per city on every
+ * corner of each hex showing the rolled number. Nothing on a 7.
+ *
+ * If the bank cannot pay everyone who earned a resource, nobody gets it, unless
+ * only one player earned it, in which case they get what the bank has left.
+ */
+export function production(
+  state: PlayState,
+  total: number,
+): { produced: Record<PlayerId, Hand>; shortages: Resource[] } {
+  const earned: Record<PlayerId, Record<Resource, number>> = Object.fromEntries(
+    state.players.map((p) => [p, { ...emptyHand }]),
+  );
+  for (const hex of state.board?.hexes ?? []) {
+    const resource = PRODUCES[hex.terrain];
+    if (hex.token !== total || !resource) continue;
+    for (const corner of TOPOLOGY.hexCorners[`${hex.q},${hex.r}`] ?? []) {
+      const building = state.buildings[corner];
+      const tally = building ? earned[building.player] : undefined;
+      if (building && tally) tally[resource] += building.kind === "city" ? 2 : 1;
+    }
+  }
+  const shortages: Resource[] = [];
+  for (const resource of RESOURCES) {
+    const claimants = state.players.filter((p) => (earned[p]?.[resource] ?? 0) > 0);
+    const demand = claimants.reduce((sum, p) => sum + (earned[p]?.[resource] ?? 0), 0);
+    if (demand <= state.bank[resource]) continue;
+    shortages.push(resource);
+    for (const p of state.players) {
+      const tally = earned[p];
+      if (tally) tally[resource] = claimants.length === 1 && claimants[0] === p ? state.bank[resource] : 0;
+    }
+  }
+  return {
+    produced: Object.fromEntries(state.players.map((p) => [p, hand(earned[p] ?? {})])),
+    shortages,
+  };
 }
