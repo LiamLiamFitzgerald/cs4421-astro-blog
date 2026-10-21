@@ -95,3 +95,4 @@ rules, all gated in CI. See [ADR-005](adr/ADR-005-verification-strategy.md).
 - [ADR-007](adr/ADR-007-design-system.md): design system and visual identity
 - [ADR-008](adr/ADR-008-play-mode-game-module.md): play mode as a second game module
 - [ADR-009](adr/ADR-009-art-direction.md): art direction and colour roles
+- [ADR-010](adr/ADR-010-move-hosting-to-lambda.md): move hosting from Fargate to Lambda

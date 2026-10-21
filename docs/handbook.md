@@ -100,19 +100,26 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
   CloudWatch) for `"client error"`. Reports are validated and capped at 4 KB;
   a page sends at most ten.
 - `docker build -t catan-app .` builds the production image; CI builds it too.
-- Production runs on ECS Fargate (`cdk/lib/app-service-stack.ts`): an ALB with
-  CloudFront in front, health-checked on `/api/health`, with a circuit breaker
-  that rolls back a failed deployment.
-- Its whole lifecycle is the **App Environment** workflow
+  `docker build --target lambda .` adds the AWS Lambda Web Adapter for Lambda
+  (pulled from public.ecr.aws, which rate-limits anonymous pulls; CI retries).
+- Production runs on AWS Lambda (`cdk/lib/app-lambda-stack.ts`, ADR-010): the
+  same image, with the AWS Lambda Web Adapter forwarding requests to the Node
+  server, behind a function URL and CloudFront. The adapter waits for
+  `/api/health` before serving.
+- Deploys publish a new Lambda version and CodeDeploy shifts the `live` alias
+  to it as a canary (10% for 5 minutes). If the error alarm fires, CodeDeploy
+  rolls back to the previous version automatically.
+- Manual rollback: point the alias back at the previous version
+  (`aws lambda update-alias --function-name <name> --name live --function-version <n>`),
+  or redeploy the previous commit.
+- Its lifecycle is the **App Environment** workflow
   (`.github/workflows/app-environment.yml`), manual only: `deploy`, `destroy`, or
-  `rehearse` (deploy, smoke-test `/api/health`, then always destroy). A nightly
-  schedule (01:00 UTC) also destroys the stack as a safety net.
-- Cost: roughly $0.06/hour (about $1.40/day) while the stack exists. Rehearse
-  the day before the defence, deploy for the demo, destroy afterwards.
-- Roll back by redeploying the previous commit; the image is built from the
-  commit's Dockerfile and the circuit breaker handles failed rollouts.
-- The old S3 static deploy is retired (manual-only) until the Fargate deploy has
-  been verified, then it is removed.
+  `rehearse` (deploy, smoke-test `/api/health`, then always destroy).
+- Cost: close to zero while idle (no load balancer or always-on task); requests
+  fall within the Lambda and CloudFront free allowances at this traffic.
+- The ECS Fargate stack (`cdk/lib/app-service-stack.ts`, ADR-001) is commented
+  out of `cdk/bin/cdk.ts` but kept and tested, so it can be restored.
+- The old S3 static deploy stays retired (manual-only).
 
 ## Branch protection
 
