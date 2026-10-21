@@ -627,7 +627,7 @@ import '../styles/board.css';
 	}
 	.scoreboard .builds {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--space-2);
 	}
 	.scoreboard .build {
@@ -806,6 +806,40 @@ import '../styles/board.css';
 	.scoreboard .steal {
 		display: grid;
 		gap: var(--space-2);
+	}
+	/* Development cards */
+	.scoreboard .cards {
+		display: grid;
+		gap: var(--space-2);
+		padding-top: var(--space-3);
+		border-top: 1px solid var(--color-line);
+	}
+	.scoreboard .card-row {
+		display: grid;
+		gap: var(--space-1);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-s);
+		background: var(--color-surface-sunk);
+	}
+	.scoreboard .card-row__name {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		font-weight: 700;
+	}
+	.scoreboard .card-row__text {
+		margin: 0;
+		font-size: var(--text-s);
+		color: var(--color-ink-muted);
+	}
+	.scoreboard .card-row__controls {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		align-items: center;
+	}
+	.scoreboard .player__hidden {
+		font-size: var(--text-xs);
 	}
 	@media (max-width: 40rem) {
 		.scoreboard .builds {

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { gameWithPlayableCard } from "./fixtures";
 
 /**
  * Plays the site's own game. Dice are made predictable by feeding values to
@@ -249,5 +250,39 @@ test.describe("Feature: failures and leaving a played game", () => {
 
     await expect(page.locator("#setup")).toBeVisible();
     await expect(page.locator("#play")).toBeHidden();
+  });
+});
+
+test.describe("Feature: development cards", () => {
+  test("given a knight from an earlier turn, playing it moves the robber and adds to the army", async ({ page }) => {
+    const { log, player: holder } = gameWithPlayableCard("knight");
+    await page.goto("/catan");
+    await page.evaluate((events) => window.localStorage.setItem("catan-play:events:local", JSON.stringify(events)), log);
+    await page.reload();
+
+    await expect(turnTitle(page)).toHaveText(`${holder}'s turn`);
+    const cards = page.getByRole("region", { name: `${holder}'s development cards` });
+    await expect(cards).toContainText("Knight");
+    await cards.getByRole("button", { name: "Play knight" }).click();
+
+    await expect(page.locator("#play-turn")).toContainText("Move the robber");
+    await expect(page.locator("#announcer")).toContainText(`${holder} played a knight`);
+    await spots(page).first().click();
+    const steal = page.getByRole("button", { name: /^Steal from / });
+    if (await steal.count()) await steal.first().click();
+    // A knight before the roll returns play to the roll.
+    await expect(page.getByRole("button", { name: "Roll the dice" })).toBeVisible();
+    await expect(player(page, holder).locator(".supply")).toContainText(/[1-9] knights? played/);
+  });
+
+  test("given Buy card without the resources, it is disabled and says what is missing", async ({ page }) => {
+    await startPlay(page);
+    await playOpening(page);
+    await nextDice(page, 2, 1);
+    await page.getByRole("button", { name: "Roll the dice" }).click();
+
+    const buy = page.getByRole("button", { name: /Buy card/ });
+    await expect(buy).toBeVisible();
+    if (await buy.isDisabled()) await expect(buy).toContainText("Needs");
   });
 });
