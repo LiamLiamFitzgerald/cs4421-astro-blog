@@ -112,18 +112,18 @@ test.describe("Feature: taking turns", () => {
     await startPlay(page);
     await playOpening(page);
 
-    await nextDice(page, 3, 4);
+    await nextDice(page, 2, 1);
     await page.getByRole("button", { name: "Roll the dice" }).click();
 
-    await expect(page.locator(".roll__text")).toHaveText(/^Rolled 7\. Nothing is produced on a 7/);
-    await expect(page.locator("#announcer")).toContainText("Rolled 7.");
+    await expect(page.locator(".roll__text")).toHaveText(/^Rolled 3\./);
+    await expect(page.locator("#announcer")).toContainText("Rolled 3.");
     await expect(page.getByRole("button", { name: "End turn" })).toBeVisible();
   });
 
   test("given Ana has lumber and brick, she builds a road on a highlighted edge", async ({ page }) => {
     await startPlay(page);
     await playOpening(page);
-    await nextDice(page, 3, 4);
+    await nextDice(page, 2, 1);
     await page.getByRole("button", { name: "Roll the dice" }).click();
 
     const build = page.getByRole("button", { name: /Build road/ });
@@ -140,7 +140,7 @@ test.describe("Feature: taking turns", () => {
   test("given Ana cannot afford a city, the button is disabled and says what is missing", async ({ page }) => {
     await startPlay(page);
     await playOpening(page);
-    await nextDice(page, 3, 4);
+    await nextDice(page, 2, 1);
     await page.getByRole("button", { name: "Roll the dice" }).click();
 
     const city = page.getByRole("button", { name: /Build city/ });
@@ -151,7 +151,7 @@ test.describe("Feature: taking turns", () => {
   test("given Escape, build mode is cancelled", async ({ page }) => {
     await startPlay(page);
     await playOpening(page);
-    await nextDice(page, 3, 4);
+    await nextDice(page, 2, 1);
     await page.getByRole("button", { name: "Roll the dice" }).click();
 
     await page.getByRole("button", { name: /Build road/ }).click();
@@ -176,7 +176,7 @@ test.describe("Feature: taking turns", () => {
   test("given a reload mid-game, the same position and turn come back", async ({ page }) => {
     await startPlay(page);
     await playOpening(page);
-    await nextDice(page, 3, 4);
+    await nextDice(page, 2, 1);
     await page.getByRole("button", { name: "Roll the dice" }).click();
     await page.getByRole("button", { name: /Build road/ }).click();
     await spots(page).first().click();
@@ -186,6 +186,32 @@ test.describe("Feature: taking turns", () => {
     await expect(turnTitle(page)).toHaveText("Ana's turn");
     await expect(player(page, "Ana").locator(".supply")).toContainText("12 roads");
     await expect(page.locator("#play-board .piece--road")).toHaveCount(5);
+  });
+});
+
+test.describe("Feature: the robber", () => {
+  test("given a 7, the roller moves the robber to a highlighted hex and play carries on", async ({ page }) => {
+    await startPlay(page);
+    await playOpening(page);
+    const robber = page.locator("#play-board .robber");
+    const before = await robber.getAttribute("transform");
+
+    await nextDice(page, 3, 4);
+    await page.getByRole("button", { name: "Roll the dice" }).click();
+    await expect(page.locator(".roll__text")).toHaveText("Rolled 7. Nobody collects; the robber moves.");
+    await expect(page.locator("#play-board-hint")).toContainText("robber");
+    await expect(spots(page)).toHaveCount(18);
+    await expect(spots(page).first()).toHaveAttribute("aria-label", /^Move the robber to /);
+
+    await spots(page).first().click();
+    expect(await robber.getAttribute("transform")).not.toBe(before);
+    // Either someone can be robbed (choose them) or play goes straight back to building.
+    const steal = page.getByRole("button", { name: /^Steal from / });
+    if (await steal.count()) {
+      await steal.first().click();
+      await expect(page.locator("#announcer")).toContainText("stole a card from");
+    }
+    await expect(page.getByRole("button", { name: "End turn" })).toBeVisible();
   });
 });
 

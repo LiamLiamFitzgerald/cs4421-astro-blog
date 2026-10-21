@@ -9,6 +9,7 @@ import {
 	describeCorner,
 	describeEdge,
 	describeHand,
+	describeHex,
 	describePlayEvent,
 	describePlayViolation,
 	describeRoll,
@@ -20,9 +21,11 @@ import type { PlayCommand } from '../lib/games/catan-play/commands';
 import type { PlayEvent } from '../lib/games/catan-play/events';
 import { replayPlay } from '../lib/games/catan-play/evolve';
 import {
+	actingPlayer,
 	buildOptions,
 	currentPlayer,
 	expectedStep,
+	legalRobberHexes,
 	legalSetupRoads,
 	legalSetupSettlements,
 	longestRoadLength,
@@ -58,6 +61,18 @@ const RESOURCE_ICONS: Readonly<Record<Resource, IconName>> = {
 	ore: 'ore',
 };
 const PIECE_ICONS: Readonly<Record<Piece, IconName>> = { road: 'road', settlement: 'settlement', city: 'city' };
+
+/** A fair random integer from 0 to n − 1 from the browser's secure source. */
+function randomBelow(n: number): number {
+	if (n <= 1) return 0;
+	const limit = Math.floor(0x100000000 / n) * n;
+	const buffer = new Uint32Array(1);
+	for (;;) {
+		crypto.getRandomValues(buffer);
+		const value = buffer[0] ?? 0;
+		if (value < limit) return value % n;
+	}
+}
 
 /** One fair die from the browser's secure random source (no modulo bias). */
 function rollDie(): number {
@@ -156,9 +171,12 @@ export function createPlayView(
 				? describeRoll(state.lastRoll, state.players)
 				: `${describePlayEvent(event, state)}.`,
 		);
-		const next = currentPlayer(state);
+		const next = actingPlayer(state);
 		const step = expectedStep(state);
 		if (state.winner) parts.push(`${state.winner} wins with ${points(state, state.winner)} points.`);
+		else if (next && (step === 'discard' || step === 'move-robber' || step === 'steal')) {
+			parts.push(`${next}: ${describeStep(step)}`);
+		}
 		else if (next && step && added.some((e) => e.type === 'TurnEnded' || e.type === 'SetupRoadPlaced')) {
 			parts.push(`${next}'s turn. ${describeStep(step)}`);
 		}
@@ -208,13 +226,22 @@ export function createPlayView(
 			if (mode === 'settlement') targets = vertexTargets(spots, 'Build a settlement', (vertex) => ({ type: 'BuildSettlement', player, vertex }));
 			if (mode === 'city') targets = vertexTargets(spots, 'Upgrade to a city', (vertex) => ({ type: 'BuildCity', player, vertex }));
 		}
-		return { buildings, roads, targets };
+		const hexTargets =
+			step === 'move-robber'
+				? {
+						keys: legalRobberHexes(state),
+						label: (key: string) => `Move the robber to ${describeHex(state.board, key)}`,
+						onPick: (hex: string) => void run({ type: 'MoveRobber', player, hex }),
+					}
+				: undefined;
+		return { buildings, roads, targets, robber: state.robber, hexTargets };
 	}
 
 	function boardInstruction(state: PlayState): string {
 		const step = expectedStep(state);
 		if (step === 'place-settlement') return 'Choose a highlighted corner for the settlement.';
 		if (step === 'place-road') return 'Choose a highlighted edge for the road.';
+		if (step === 'move-robber') return 'Choose a highlighted hex for the robber. It cannot stay where it is.';
 		if (step === 'build-or-end' && mode) return `Choose where to build the ${PIECE_NAMES[mode]}. Select Build ${PIECE_NAMES[mode]} again (or press Escape) to cancel.`;
 		return '';
 	}
@@ -263,14 +290,19 @@ export function createPlayView(
 
 	function turnPanel(state: PlayState): HTMLElement[] {
 		const player = currentPlayer(state) ?? '';
+		const actor = actingPlayer(state) ?? player;
 		const step = expectedStep(state);
-		const seat = seatOf(state, player);
+		const seat = seatOf(state, actor);
 		const parts: HTMLElement[] = [];
 
 		const head = el('header', 'turn__head');
 		const badge = el('span', `seat seat--${seat}`, String(seat));
 		badge.setAttribute('aria-hidden', 'true');
-		const title = el('h2', 'turn__title', state.winner ? 'Game over' : `${player}'s turn`);
+		const title = el(
+			'h2',
+			'turn__title',
+			state.winner ? 'Game over' : step === 'discard' ? `${actor} must discard` : `${player}'s turn`,
+		);
 		title.id = 'turn-title';
 		head.append(badge, title);
 		if (state.phase === 'setup') head.append(el('span', 'turn__phase', 'Setup'));
@@ -293,6 +325,22 @@ export function createPlayView(
 		}
 
 		const actions = el('div', 'turn__actions');
+		if (step === 'discard' && state.pending?.kind === 'discard') {
+			actions.append(discardForm(state, actor, state.pending.owed[actor] ?? 0));
+		}
+		if (step === 'steal' && state.pending?.kind === 'steal') {
+			const group = el('div', 'steal');
+			group.setAttribute('role', 'group');
+			group.setAttribute('aria-label', 'Steal a card');
+			for (const victim of state.pending.victims) {
+				const cards = handSize(state.hands[victim] ?? emptyHand);
+				const b = button(`Steal from ${victim} (${cards} card${cards === 1 ? '' : 's'})`, null, 'button');
+				// The card is chosen at random here and checked by the rules (ADR-011).
+				b.addEventListener('click', () => void run({ type: 'StealFrom', player, victim, pick: randomBelow(cards) }));
+				group.append(b);
+			}
+			actions.append(group);
+		}
 		if (step === 'roll') {
 			const roll = button('Roll the dice', 'dice', 'button button--primary');
 			roll.addEventListener('click', () => void run({ type: 'RollDice', player, dice: [rollDie(), rollDie()] }));
@@ -340,6 +388,61 @@ export function createPlayView(
 		return parts;
 	}
 
+	/** Steppers for choosing which cards to discard after a 7. */
+	function discardForm(state: PlayState, player: string, owed: number): HTMLElement {
+		const form = el('form', 'discard');
+		form.setAttribute('aria-label', `${player}: discard ${owed} cards`);
+		const held = state.hands[player] ?? emptyHand;
+		const chosen: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+		const status = el('p', 'discard__status numeric');
+		status.setAttribute('aria-live', 'polite');
+		const submit = button('Discard', null, 'button button--primary');
+		submit.type = 'submit';
+		const rows = el('div', 'discard__rows');
+		const update = () => {
+			const total = RESOURCES.reduce((n, r) => n + chosen[r], 0);
+			status.textContent = `${total} of ${owed} chosen`;
+			submit.disabled = total !== owed;
+			for (const r of RESOURCES) {
+				rows.querySelector<HTMLOutputElement>(`[data-count="${r}"]`)!.textContent = String(chosen[r]);
+				rows.querySelector<HTMLButtonElement>(`[data-less="${r}"]`)!.disabled = chosen[r] === 0;
+				rows.querySelector<HTMLButtonElement>(`[data-more="${r}"]`)!.disabled = chosen[r] >= held[r] || total >= owed;
+			}
+		};
+		for (const r of RESOURCES) {
+			if (held[r] === 0) continue;
+			const row = el('div', 'discard__row');
+			const label = el('span', 'discard__name');
+			label.append(iconElement(RESOURCE_ICONS[r]), document.createTextNode(`${r} (${held[r]})`));
+			const less = button('−', null, 'button button--small');
+			less.dataset.less = r;
+			less.setAttribute('aria-label', `Discard one fewer ${r}`);
+			const count = el('output', 'discard__count numeric', '0');
+			count.dataset.count = r;
+			const more = button('+', null, 'button button--small');
+			more.dataset.more = r;
+			more.setAttribute('aria-label', `Discard one more ${r}`);
+			less.addEventListener('click', () => {
+				chosen[r] -= 1;
+				update();
+			});
+			more.addEventListener('click', () => {
+				chosen[r] += 1;
+				update();
+			});
+			row.append(label, less, count, more);
+			rows.append(row);
+		}
+		form.append(rows, status, submit);
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			void run({ type: 'DiscardCards', player, cards: { ...chosen } });
+		});
+		// Rows must exist before the first update.
+		queueMicrotask(update);
+		return form;
+	}
+
 	function tradeForm(state: PlayState, player: string): HTMLElement {
 		const form = el('form', 'trade');
 		form.setAttribute('aria-label', 'Trade with the bank');
@@ -374,7 +477,7 @@ export function createPlayView(
 
 	function playerRow(state: PlayState, player: string): HTMLElement {
 		const seat = seatOf(state, player);
-		const isCurrent = currentPlayer(state) === player && !state.winner;
+		const isCurrent = actingPlayer(state) === player && !state.winner;
 		const row = el('article', `play-player seat-color--${seat}`);
 		row.classList.toggle('play-player--current', isCurrent);
 		row.classList.toggle('player--winner', state.winner === player);

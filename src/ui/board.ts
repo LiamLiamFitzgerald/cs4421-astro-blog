@@ -19,6 +19,14 @@ export interface BoardOverlay {
 		readonly label: (id: number) => string;
 		readonly onPick: (id: number) => void;
 	};
+	/** Hex key ("q,r") the robber stands on. */
+	readonly robber?: string | null;
+	/** Hexes the robber can move to, as keyboard-focusable buttons. */
+	readonly hexTargets?: {
+		readonly keys: readonly string[];
+		readonly label: (key: string) => string;
+		readonly onPick: (key: string) => void;
+	};
 }
 
 const SIZE = 50;
@@ -85,7 +93,8 @@ export function renderBoard(
 		}
 		return group;
 	});
-	target.replaceChildren(defs(), sea, coast, ...tiles, ...(overlay ? drawOverlay(overlay) : []));
+	const centres = new Map(view.hexes.map((h) => [h.key, { x: h.cx, y: h.cy }]));
+	target.replaceChildren(defs(), sea, coast, ...tiles, ...(overlay ? drawOverlay(overlay, centres) : []));
 
 	if (list) {
 		list.replaceChildren(
@@ -107,7 +116,33 @@ function titled<T extends SVGElement>(node: T, label: string): T {
 	return node;
 }
 
-function drawOverlay(overlay: BoardOverlay): SVGElement[] {
+function makeButton(spot: SVGElement, label: string, pick: () => void, key: string): SVGElement {
+	spot.setAttribute('role', 'button');
+	spot.setAttribute('tabindex', '0');
+	spot.setAttribute('aria-label', label);
+	spot.dataset.spot = key;
+	titled(spot, label);
+	spot.addEventListener('click', pick);
+	spot.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			pick();
+		}
+	});
+	return spot;
+}
+
+/** The robber: a dark pawn, drawn above the hex's number token. */
+function robberPiece(x: number, y: number): SVGElement {
+	const group = titled(svg('g', { class: 'robber', transform: `translate(${x} ${y - 20})` }), 'The robber');
+	group.append(
+		svg('ellipse', { cx: 0, cy: 9, rx: 8, ry: 2.6, class: 'robber__base' }),
+		svg('path', { d: 'M-6 9C-6 2-4 -1-3-3A5 5 0 1 1 3-3C4-1 6 2 6 9Z', class: 'robber__body' }),
+	);
+	return group;
+}
+
+function drawOverlay(overlay: BoardOverlay, centres: Map<string, { x: number; y: number }>): SVGElement[] {
 	const layer: SVGElement[] = [];
 
 	for (const road of overlay.roads) {
@@ -142,6 +177,21 @@ function drawOverlay(overlay: BoardOverlay): SVGElement[] {
 		inner.append(svg('path', { d: shape, class: 'piece__body' }), seat);
 		group.append(inner);
 		buildingLayer.push(group);
+	}
+
+	const robberAt = overlay.robber ? centres.get(overlay.robber) : undefined;
+	if (robberAt) buildingLayer.push(robberPiece(robberAt.x, robberAt.y));
+
+	if (overlay.hexTargets) {
+		const group = svg('g', { class: 'board__targets' });
+		for (const key of overlay.hexTargets.keys) {
+			const centre = centres.get(key);
+			if (!centre) continue;
+			const ring = svg('circle', { cx: centre.x, cy: centre.y + 6, r: 24, class: 'board__target board__target--hex' });
+			const targets = overlay.hexTargets;
+			group.append(makeButton(ring, targets.label(key), () => targets.onPick(key), key));
+		}
+		return [...layer, ...buildingLayer, group];
 	}
 
 	const targets = overlay.targets;

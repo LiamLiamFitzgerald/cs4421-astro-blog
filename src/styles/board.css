@@ -192,3 +192,26 @@
 		r: 19px;
 	}
 }
+
+/* The robber: the one dark piece, so it reads on every terrain. */
+.robber {
+	pointer-events: none;
+}
+.robber__body {
+	fill: var(--color-ink);
+	stroke: var(--color-surface);
+	stroke-width: 1.5;
+	filter: drop-shadow(0 1.5px 1px rgb(20 20 10 / 0.5));
+}
+.robber__base {
+	fill: rgb(20 20 10 / 0.35);
+}
+/* Hex targets ring the number token, leaving the number readable. */
+.board__target--hex {
+	fill: rgb(251 248 239 / 0.15);
+	stroke-width: 3;
+}
+.board__target--hex:hover,
+.board__target--hex:focus-visible {
+	fill: rgb(219 180 71 / 0.35);
+}
