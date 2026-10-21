@@ -19,6 +19,8 @@ export interface BoardOverlay {
 		readonly label: (id: number) => string;
 		readonly onPick: (id: number) => void;
 	};
+	/** Harbours on coastal edges: "any" (3:1) or a resource (2:1). */
+	readonly harbours?: readonly { edge: number; kind: string; label: string }[];
 	/** Hex key ("q,r") the robber stands on. */
 	readonly robber?: string | null;
 	/** Hexes the robber can move to, as keyboard-focusable buttons. */
@@ -177,6 +179,33 @@ function drawOverlay(overlay: BoardOverlay, centres: Map<string, { x: number; y:
 		inner.append(svg('path', { d: shape, class: 'piece__body' }), seat);
 		group.append(inner);
 		buildingLayer.push(group);
+	}
+
+	// Harbours sit just off the coast with two piers to the corners they serve.
+	for (const harbour of overlay.harbours ?? []) {
+		const [a, b] = (TOPOLOGY.edges[harbour.edge]?.ends ?? [0, 0]).map(point);
+		if (!a || !b) continue;
+		const mx = (a.x + b.x) / 2;
+		const my = (a.y + b.y) / 2;
+		const length = Math.hypot(mx, my) || 1;
+		const wide = harbour.kind !== 'any';
+		// Keep wide signs inside the sea frame at the far left and right.
+		const limit = 250 - (wide ? 26 : 15);
+		const hx = Math.max(-limit, Math.min(limit, mx + (mx / length) * 26));
+		const hy = my + (my / length) * 26;
+		const group = titled(svg('g', { class: `harbour harbour--${harbour.kind}` }), harbour.label);
+		group.append(
+			svg('line', { x1: a.x, y1: a.y, x2: hx, y2: hy, class: 'harbour__pier' }),
+			svg('line', { x1: b.x, y1: b.y, x2: hx, y2: hy, class: 'harbour__pier' }),
+		);
+		// The resource is written on the sign, so it never depends on colour alone.
+		const wording = harbour.kind === 'any' ? '3:1' : `2:1 ${harbour.kind}`;
+		const width = wide ? 52 : 30;
+		group.append(svg('rect', { x: hx - width / 2, y: hy - 9, width, height: 18, rx: 4, class: 'harbour__sign' }));
+		const text = svg('text', { x: hx, y: hy + 3.5, class: 'harbour__rate' });
+		text.textContent = wording;
+		group.append(text);
+		layer.push(group);
 	}
 
 	const robberAt = overlay.robber ? centres.get(overlay.robber) : undefined;

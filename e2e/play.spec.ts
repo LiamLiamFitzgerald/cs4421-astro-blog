@@ -286,3 +286,14 @@ test.describe("Feature: development cards", () => {
     if (await buy.isDisabled()) await expect(buy).toContainText("Needs");
   });
 });
+
+test.describe("Feature: harbours", () => {
+  test("given a new game, nine harbours are drawn with their rates written on them", async ({ page }) => {
+    await startPlay(page);
+
+    await expect(page.locator("#play-board .harbour")).toHaveCount(9);
+    await expect(page.locator("#play-board .harbour__rate", { hasText: "3:1" })).toHaveCount(4);
+    await expect(page.locator("#play-board .harbour__rate", { hasText: /^2:1 (lumber|brick|wool|grain|ore)$/ })).toHaveCount(5);
+    await expect(page.locator("#play-board-list li", { hasText: /harbour by / })).toHaveCount(9);
+  });
+});
