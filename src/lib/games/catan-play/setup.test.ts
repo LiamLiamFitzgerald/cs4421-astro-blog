@@ -117,6 +117,12 @@ describe("Feature: placing a setup settlement", () => {
     });
   });
 
+  it("given a road is expected, no corners are offered; given a settlement is expected, no roads are", () => {
+    const log = play([{ type: "PlaceSetupSettlement", player: "ana", vertex: firstCorner }], started());
+    expect(legalSetupSettlements(replayPlay(log))).toEqual([]);
+    expect(legalSetupRoads(replayPlay(started()))).toEqual([]);
+  });
+
   it("given a road is expected, another settlement is refused", () => {
     const log = play([{ type: "PlaceSetupSettlement", player: "ana", vertex: firstCorner }], started());
     expect(when(log, { type: "PlaceSetupSettlement", player: "ana", vertex: 0 })).toEqual({

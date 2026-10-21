@@ -37,6 +37,8 @@ describe("Feature: dealing harbours", () => {
     const ring = coastRing();
     expect(harbours.map((h) => h.edge)).toEqual(HARBOUR_SLOTS.map((s) => ring[s]));
     expect(harbours.map((h) => h.kind).sort()).toEqual([...HARBOUR_KINDS].sort());
+    // The base game's set, spelled out (so the constant itself is checked too).
+    expect([...HARBOUR_KINDS].sort()).toEqual(["any", "any", "any", "any", "brick", "grain", "lumber", "ore", "wool"]);
   });
 
   it("never puts two harbours on edges that share a corner", () => {
