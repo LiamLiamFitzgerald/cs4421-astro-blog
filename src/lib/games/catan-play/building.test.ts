@@ -15,7 +15,7 @@ import {
 } from "./queries";
 import { COSTS, emptyHand, hand, handSize, PIECE_LIMITS, RESOURCES, type Hand } from "./resources";
 import type { PlayState } from "./state";
-import { completeSetup, play } from "./test-helpers";
+import { completeSetup, play, resolvePending } from "./test-helpers";
 import { TOPOLOGY, type EdgeId, type VertexId } from "./topology";
 
 const rich = hand({ lumber: 10, brick: 10, wool: 10, grain: 10, ore: 10 });
@@ -460,7 +460,7 @@ describe("Feature: random games stay legal (property)", () => {
                   : { type: "BuildCity", player, vertex: pick.spots[choice % pick.spots.length] ?? -1 }
               : { type: "EndTurn", player };
           }
-          log = play([command], log);
+          log = resolvePending(play([command], log));
         }
         const state = replayPlay(log);
         for (const r of RESOURCES) {

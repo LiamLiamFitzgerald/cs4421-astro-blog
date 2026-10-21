@@ -31,11 +31,64 @@ export function currentPlayer(state: PlayState): PlayerId | null {
   return state.started ? (state.players[state.current] ?? null) : null;
 }
 
-/** What the current player has to do next, or null before the start and after the end. */
+/** What has to happen next, or null before the start and after the end. */
 export function expectedStep(state: PlayState): Step | null {
   if (!state.started || state.phase === "finished") return null;
+  if (state.pending) return state.pending.kind;
   if (state.phase === "setup") return state.pendingSettlement === null ? "place-settlement" : "place-road";
   return state.phase === "roll" ? "roll" : "build-or-end";
+}
+
+/**
+ * Who has to act now. Usually the current player, but after a 7 each player
+ * who owes cards discards in seat order, starting with the roller (ADR-011).
+ */
+export function actingPlayer(state: PlayState): PlayerId | null {
+  const pending = state.pending;
+  if (pending?.kind !== "discard") return currentPlayer(state);
+  const n = state.players.length;
+  for (let i = 0; i < n; i++) {
+    const p = state.players[(state.current + i) % n];
+    if (p !== undefined && (pending.owed[p] ?? 0) > 0) return p;
+  }
+  return currentPlayer(state);
+}
+
+// ------------------------------------------------------------ the robber
+
+/** Players with more than 7 cards discard half, rounded down. */
+export const DISCARD_LIMIT = 7;
+
+export function discardsOwed(state: PlayState): Record<PlayerId, number> {
+  return Object.fromEntries(
+    state.players
+      .map((p) => [p, handSize(state.hands[p] ?? emptyHand)] as const)
+      .filter(([, size]) => size > DISCARD_LIMIT)
+      .map(([p, size]) => [p, Math.floor(size / 2)]),
+  );
+}
+
+/** Every hex except the one the robber is on. */
+export function legalRobberHexes(state: PlayState): string[] {
+  return (state.board?.hexes ?? []).map((h) => `${h.q},${h.r}`).filter((key) => key !== state.robber);
+}
+
+/** Players other than the thief with a building on the hex and at least one card. */
+export function robberVictims(state: PlayState, hex: string, thief: PlayerId): PlayerId[] {
+  const owners = new Set(
+    (TOPOLOGY.hexCorners[hex] ?? []).flatMap((v) => (state.buildings[v] ? [state.buildings[v].player] : [])),
+  );
+  return state.players.filter((p) => p !== thief && owners.has(p) && handSize(state.hands[p] ?? emptyHand) > 0);
+}
+
+/** The resource of the `pick`-th card when a hand is laid out in resource order. */
+export function cardAt(h: Hand, pick: number): Resource | null {
+  let index = pick;
+  for (const r of RESOURCES) {
+    if (index < h[r]) return r;
+    index -= h[r];
+  }
+  return null;
 }
 
 /** True when the corner and every corner next to it are empty (the distance rule). */
@@ -75,7 +128,7 @@ export function production(
   );
   for (const hex of state.board?.hexes ?? []) {
     const resource = PRODUCES[hex.terrain];
-    if (hex.token !== total || !resource) continue;
+    if (hex.token !== total || !resource || `${hex.q},${hex.r}` === state.robber) continue;
     for (const corner of TOPOLOGY.hexCorners[`${hex.q},${hex.r}`] ?? []) {
       const building = state.buildings[corner];
       const tally = building ? earned[building.player] : undefined;

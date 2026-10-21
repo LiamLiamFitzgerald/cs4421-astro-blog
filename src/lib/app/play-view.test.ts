@@ -6,6 +6,7 @@ import { TOPOLOGY } from "../games/catan-play/topology";
 import {
   describeCorner,
   describeEdge,
+  describeHex,
   describeHand,
   describePlayEvent,
   describePlayViolation,
@@ -68,7 +69,7 @@ describe("Feature: words for the play mode", () => {
     const roll = { player: "ana", dice: [3, 5] as const, total: 8, produced: { ana: hand({ grain: 1 }), ben: hand({}) }, shortages: [] };
     expect(describeRoll(roll, ["ana", "ben"])).toBe("Rolled 8. ana gets 1 grain.");
     expect(describeRoll({ ...roll, produced: { ana: hand({}), ben: hand({}) } }, ["ana", "ben"])).toBe("Rolled 8. Nobody collects anything.");
-    expect(describeRoll({ ...roll, total: 7 }, ["ana", "ben"])).toContain("Nothing is produced on a 7");
+    expect(describeRoll({ ...roll, total: 7 }, ["ana", "ben"])).toBe("Rolled 7. Nobody collects; the robber moves.");
     expect(describeRoll({ ...roll, shortages: ["ore"] }, ["ana", "ben"])).toContain("The bank ran short of ore.");
   });
 
@@ -77,6 +78,18 @@ describe("Feature: words for the play mode", () => {
     expect(describePlayEvent({ type: "BankTraded", player: "ana", give: "wool", get: "ore" }, state)).toBe("ana traded 4 wool for 1 ore");
     expect(describePlayEvent({ type: "DiceRolled", player: "ben", dice: [2, 4] }, state)).toBe("ben rolled 6");
     expect(describePlayEvent({ type: "SettlementBuilt", player: "ana", vertex: 0 }, state)).toMatch(/^ana built a settlement at /);
+  });
+
+  it("describes robber steps, refusals and events", () => {
+    const state = { ...initialPlayState, board };
+    expect(describeStep("discard")).toContain("more than 7");
+    expect(describePlayViolation({ code: "WRONG_DISCARD_COUNT", owed: 4, given: 3 })).toBe("Discard exactly 4 cards (you chose 3).");
+    expect(describePlayViolation({ code: "WRONG_DISCARD_COUNT", owed: 1, given: 0 })).toBe("Discard exactly 1 card (you chose 0).");
+    expect(describePlayViolation({ code: "NOT_A_VICTIM", victims: ["ben", "cy"] })).toBe("Steal from ben or cy.");
+    expect(describePlayEvent({ type: "CardStolen", player: "ana", victim: "ben", resource: "ore" }, state)).toBe("ana stole a card from ben");
+    const desert = board.hexes.find((h) => h.terrain === "desert");
+    expect(describeHex(board, `${desert?.q},${desert?.r}`)).toBe("the desert");
+    expect(describeHex(board, "9,9")).toBe("the board");
   });
 
   it("offers only resources with at least four cards for trade", () => {
