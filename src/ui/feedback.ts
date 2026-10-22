@@ -4,16 +4,19 @@
  * modes report and recover from errors the same way (ADR-006, ADR-007).
  */
 import { describeFailure } from '../lib/app/scoreboard';
+import type { GameContext } from '../lib/observability/client-error';
 import { iconElement } from './icons';
 
 /** Called with every failure the rules did not expect. */
-export type FailureReporter = (error: unknown, context: string) => void;
+export type FailureReporter = (error: unknown, context: string, game?: GameContext) => void;
 
 export interface Feedback {
 	announce(text: string): void;
 	/** Shows a failure with a retry, and reports it. */
 	fail(error: unknown, context: string, retry: () => Promise<void>): void;
 	clearFailure(): void;
+	/** Shows a problem that is not an error to retry, such as a game that was restored. */
+	inform(title: string, advice: string): void;
 }
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -61,6 +64,12 @@ export function createFeedback(announcer: HTMLElement, failure: HTMLElement, rep
 		},
 		clearFailure() {
 			failure.hidden = true;
+		},
+		inform(title, advice) {
+			const body = el('div', 'notice__body');
+			body.append(el('p', 'notice__title', title), el('p', undefined, advice));
+			failure.replaceChildren(iconElement('alert'), body);
+			failure.hidden = false;
 		},
 	};
 }

@@ -99,8 +99,16 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - Unexpected errors in visitors' browsers are sent to `POST /api/client-errors`
   and logged at level `error` with `"message":"client error"`, `context`,
   `errorName`, `errorMessage` and `page`. To find them, filter the logs (or
-  CloudWatch) for `"client error"`. Reports are validated and capped at 4 KB;
+  CloudWatch) for `"client error"`. Reports are validated and capped at 32 KB;
   a page sends at most ten.
+- An error during a game also logs `gameId`, `gameLogVersion`, `gameEvents` and
+  `eventLog` (ADR-014). The log holds the typed player names, the board and every
+  move, including hidden cards; it holds no account or contact details. To
+  reproduce a bug: find the line by `gameId`, save the line (or its `eventLog`)
+  to a file, run `npx jiti scripts/replay-report.ts file.json`, then copy the
+  events into a regression test. Contexts `play:salvaged` (a damaged save was cut
+  back) and `play:invariant` (a rule of the game was broken) are bugs to fix, not
+  player mistakes.
 - `docker build -t catan-app .` builds the production image; CI builds it too.
   `docker build --target lambda .` adds the AWS Lambda Web Adapter for Lambda
   (pulled from public.ecr.aws, which rate-limits anonymous pulls; CI retries).

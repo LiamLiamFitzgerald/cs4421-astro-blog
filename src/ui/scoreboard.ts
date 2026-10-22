@@ -27,6 +27,10 @@ import { renderBoard } from './board';
 import { createFeedback, el, type FailureReporter } from './feedback';
 import { iconElement, type IconName } from './icons';
 import { createPlayView } from './play';
+import { SalvagingPlayStore } from '../lib/app/salvaging-event-store';
+import { buildGameContext } from '../lib/observability/client-error';
+import { PLAY_LOG_VERSION } from '../lib/games/catan-play/integrity';
+import { setGameSource } from './report-error';
 
 const GAME_ID = 'local';
 
@@ -96,6 +100,33 @@ export function startScoreboard(report: FailureReporter): void {
 
 	storageNote.hidden = persistent;
 	const feedback = createFeedback(announcer, failure, report);
+
+	// A damaged save keeps the moves that can still be read, and the problem is
+	// reported with the full log so it can be replayed (ADR-014).
+	let guarded: SalvagingPlayStore;
+	const guard = (inner: ClearableStore<PlayEvent>): SalvagingPlayStore => {
+		guarded = new SalvagingPlayStore(inner, (found) => {
+			const first = found.problems[0];
+			const text = first ? `${first.kind} at event ${first.index}: ${first.detail}` : 'play log problem';
+			report(
+				new Error(text.slice(0, 500)),
+				found.salvaged ? 'play:salvaged' : 'play:invariant',
+				buildGameContext(found.gameId, PLAY_LOG_VERSION, found.stored),
+			);
+			if (found.salvaged) {
+				feedback.inform(
+					'Part of your saved game could not be read',
+					`Your game was restored to move ${found.kept}. Later moves could not be recovered. The problem was reported.`,
+				);
+			}
+		});
+		return guarded;
+	};
+	playStore = guard(playStore);
+	setGameSource(() => {
+		const snapshot = guarded.snapshot();
+		return snapshot ? { gameId: snapshot.gameId, events: snapshot.events } : null;
+	});
 	const announce = (text: string) => feedback.announce(text);
 
 	const showPlay = () => {
@@ -432,7 +463,7 @@ export function startScoreboard(report: FailureReporter): void {
 			play.clear();
 			if (!persistent) {
 				store = new MemoryEventStore<CatanEvent>();
-				playStore = new MemoryEventStore<PlayEvent>();
+				playStore = guard(new MemoryEventStore<PlayEvent>());
 				play = createPlayView(playStore, feedback, showPlay);
 			}
 			seed = randomSeed();

@@ -41,3 +41,8 @@ export function gameWithPlayableCard(card: DevCard, players = ["Ana", "Ben"], se
   }
   throw new Error(`No playable ${card} within 400 turns`);
 }
+
+/** A game that has finished setup and is waiting for the first roll. */
+export function openingLog(players = ["Ana", "Ben"], seed = 42): PlayEvent[] {
+  return completeSetup(play([{ type: "StartGame", players, seed }]));
+}

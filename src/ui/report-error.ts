@@ -4,14 +4,42 @@
  * here is caught; the error is always written to the console as well.
  */
 
+import { buildGameContext, type GameContext } from '../lib/observability/client-error';
+import { PLAY_LOG_VERSION } from '../lib/games/catan-play/integrity';
+
 const MAX_REPORTS_PER_PAGE = 10;
 let sent = 0;
 
-export function reportError(error: unknown, context: string): void {
+/** What the page is playing right now, so errors can carry the game (ADR-014). */
+export type GameSource = () => { gameId: string; events: readonly unknown[] } | null;
+
+let currentGame: GameSource = () => null;
+
+/** The play screen registers where to find the game being played. */
+export function setGameSource(source: GameSource): void {
+	currentGame = source;
+}
+
+/**
+ * Reports an error. The game being played is attached unless `game` is given,
+ * which a caller uses when the interesting log is not the current one (a save
+ * that was cut back).
+ */
+export function reportError(error: unknown, context: string, game?: GameContext): void {
 	console.error(`[${context}]`, error);
 	if (sent >= MAX_REPORTS_PER_PAGE) return;
 	sent += 1;
+	let attached = game;
+	if (!attached) {
+		try {
+			const current = currentGame();
+			if (current) attached = buildGameContext(current.gameId, PLAY_LOG_VERSION, current.events);
+		} catch {
+			// Never let finding the game break reporting.
+		}
+	}
 	const body = JSON.stringify({
+		...(attached ? { game: attached } : {}),
 		context: context.slice(0, 100),
 		name: (error instanceof Error ? error.name : typeof error).slice(0, 100) || 'Error',
 		message: (error instanceof Error ? error.message : String(error)).slice(0, 500) || 'No message',

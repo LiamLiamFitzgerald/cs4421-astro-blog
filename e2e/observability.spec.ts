@@ -47,11 +47,43 @@ test.describe("Feature: health and error reporting endpoints", () => {
 
   test("given an oversized report, it is refused", async ({ request }) => {
     const response = await request.post("/api/client-errors", {
-      data: { context: "e2e", message: "x".repeat(5000), page: "/" },
+      data: { context: "e2e", message: "x".repeat(40000), page: "/" },
     });
 
     expect(response.status()).toBe(400);
     expect(await response.json()).toEqual({ error: "report too large" });
+  });
+
+  test("given a message over its own limit, the field is named", async ({ request }) => {
+    const response = await request.post("/api/client-errors", {
+      data: { context: "e2e", message: "x".repeat(5000), page: "/" },
+    });
+
+    expect(response.status()).toBe(400);
+    expect(await response.json()).toEqual({ error: "message must be at most 500 characters" });
+  });
+
+  test("given a report that carries the game and its log, it is accepted", async ({ request }) => {
+    const response = await request.post("/api/client-errors", {
+      data: {
+        context: "e2e",
+        name: "Error",
+        message: "with a game",
+        page: "/catan",
+        game: { id: "local", version: 1, eventCount: 2, events: [{ type: "GameStarted" }, { type: "TurnEnded" }] },
+      },
+    });
+
+    expect(response.status()).toBe(204);
+  });
+
+  test("given a report whose game is malformed, it is refused with a reason", async ({ request }) => {
+    const response = await request.post("/api/client-errors", {
+      data: { context: "e2e", message: "bad game", page: "/catan", game: { id: "", version: 1, eventCount: 0 } },
+    });
+
+    expect(response.status()).toBe(400);
+    expect(await response.json()).toEqual({ error: "game.id must be 1 to 100 characters" });
   });
 });
 

@@ -98,3 +98,5 @@ rules, all gated in CI. See [ADR-005](adr/ADR-005-verification-strategy.md).
 - [ADR-010](adr/ADR-010-move-hosting-to-lambda.md): move hosting from Fargate to Lambda
 - [ADR-011](adr/ADR-011-full-game-interruptions-and-randomness.md): interruptions, acting player and randomness in the full game
 - [ADR-012](adr/ADR-012-dependabot-auto-merge.md): auto-merge for safe Dependabot updates
+- [ADR-013](adr/ADR-013-liveness-and-readiness.md): separate liveness and readiness endpoints
+- [ADR-014](adr/ADR-014-game-log-in-error-handling.md): the game log in error handling

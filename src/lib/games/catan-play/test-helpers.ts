@@ -5,6 +5,7 @@ import { replayPlay } from "./evolve";
 import { actingPlayer, currentPlayer, expectedStep, legalRobberHexes, legalSetupRoads, legalSetupSettlements } from "./queries";
 import { emptyHand, RESOURCES, type Resource } from "./resources";
 import type { PlayState } from "./state";
+import { checkInvariants } from "./integrity";
 
 /** Test helper: applies commands in order and fails loudly on the first refusal. */
 export function play(commands: readonly PlayCommand[], from: readonly PlayEvent[] = []): PlayEvent[] {
@@ -13,6 +14,8 @@ export function play(commands: readonly PlayCommand[], from: readonly PlayEvent[
     const result = decide(replayPlay(log), command);
     if (!result.ok) throw new Error(`${command.type} refused: ${JSON.stringify(result.error)}`);
     log.push(...result.value);
+    const broken = checkInvariants(replayPlay(log));
+    if (broken.length > 0) throw new Error(`invariant broken after ${command.type}: ${broken.join('; ')}`);
   }
   return log;
 }
