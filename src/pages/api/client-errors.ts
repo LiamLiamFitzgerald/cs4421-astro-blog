@@ -30,13 +30,17 @@ export const POST: APIRoute = async ({ request }) => {
   if (!report.ok) return refuse(400, report.error);
 
   // "message" is reserved by the logger, so the browser's message is logged as errorMessage.
-  const { context, name, message, page } = report.value;
+  const { context, name, message, page, game } = report.value;
   logger.log("error", "client error", {
     source: "browser",
     context,
     errorName: name,
     errorMessage: message,
     page,
+    // The game the error happened in, so it can be found and replayed (ADR-014).
+    ...(game
+      ? { gameId: game.id, gameLogVersion: game.version, gameEvents: game.eventCount, ...(game.events ? { eventLog: game.events } : {}) }
+      : {}),
   });
   return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 };

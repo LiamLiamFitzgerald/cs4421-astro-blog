@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { gameWithPlayableCard } from "./fixtures";
+import { gameWithPlayableCard, openingLog } from "./fixtures";
 
 /**
  * Plays the site's own game. Dice are made predictable by feeding values to
@@ -320,5 +320,28 @@ test.describe("Feature: trading between players", () => {
     await expect(turnTitle(page)).toHaveText("Ana's turn");
     await expect(page.locator("#announcer")).toContainText("Ben declined Ana's trade");
     await expect(page.getByRole("button", { name: "End turn" })).toBeVisible();
+  });
+});
+
+test.describe("Feature: a damaged save", () => {
+  test("given an unreadable move in the saved game, play resumes from the last good move and the problem is reported with the game", async ({
+    page,
+  }) => {
+    const log = openingLog();
+    const damaged = [...log.slice(0, log.length - 2), { type: "FromTheFuture" }, ...log.slice(log.length - 2)];
+    await page.evaluate((events) => window.localStorage.setItem("catan-play:events:local", JSON.stringify(events)), damaged);
+
+    const reported = page.waitForRequest(
+      (request) => request.url().endsWith("/api/client-errors") && request.postData()?.includes("play:salvaged") === true,
+    );
+    await page.reload();
+    const body = JSON.parse((await reported).postData() ?? "{}");
+
+    await expect(page.locator("#failure")).toContainText("Part of your saved game could not be read");
+    await expect(page.locator("#failure")).toContainText(`restored to move ${log.length - 2}`);
+    await expect(page.locator("#play")).toBeVisible();
+    expect(body.game).toMatchObject({ id: "local", version: 1, eventCount: damaged.length });
+    expect(body.game.events).toHaveLength(damaged.length);
+    expect(body.game.events[log.length - 2]).toEqual({ type: "FromTheFuture" });
   });
 });
