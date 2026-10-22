@@ -1,10 +1,16 @@
-# Catan Tracker
+# Catan Tracker and Game
 
-A scorekeeper for Settlers of Catan, built as the cumulative project for
-CS4421 DevOps. The app is small on purpose; the project is the engineering
-around it: an event-sourced game core with enforced architecture rules,
+A site for all things Catan, built as the cumulative project for
+CS4421 DevOps. An event-sourced game core with enforced architecture rules,
 automated checks on every pull request, a container image, infrastructure as
 code and versioned releases.
+
+# Main features
+-a random board generator (with in build balancing)
+-A simple score tracker 
+-A single screen game
+
+-Coming soon a multiplayer game, with room and individual controller for each players device
 
 ## Quick start
 
