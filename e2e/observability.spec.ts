@@ -9,6 +9,27 @@ test.describe("Feature: health and error reporting endpoints", () => {
     expect(await response.json()).toMatchObject({ status: "ok" });
   });
 
+  test("given the liveness endpoint, it reports ok without caching", async ({ request }) => {
+    const response = await request.get("/api/live");
+
+    expect(response.status()).toBe(200);
+    expect(response.headers()["cache-control"]).toBe("no-store");
+    expect(await response.json()).toEqual({ status: "ok" });
+  });
+
+  test("given the readiness endpoint, it reports each check without caching", async ({
+    request,
+  }) => {
+    const response = await request.get("/api/ready");
+
+    expect(response.status()).toBe(200);
+    expect(response.headers()["cache-control"]).toBe("no-store");
+    expect(await response.json()).toEqual({
+      status: "ready",
+      checks: [{ name: "rules-engine", ok: true }],
+    });
+  });
+
   test("given a valid browser error report, it is accepted", async ({ request }) => {
     const response = await request.post("/api/client-errors", {
       data: { context: "e2e", name: "Error", message: "test report", page: "/catan" },

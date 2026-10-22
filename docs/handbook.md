@@ -91,6 +91,8 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 
 - `npm run build` then `node dist/server/entry.mjs` (set `PORT` and `HOST`).
 - `GET /api/health` returns `{ status, uptime, timestamp }`.
+- `GET /api/live` (liveness) returns `{ status: "ok" }` and checks nothing else.
+- `GET /api/ready` (readiness) runs the named checks and returns 200 `{ status: "ready", checks }`, or 503 `not-ready` naming the failing checks.
 - Every request writes one JSON log line to stdout (timestamp, level, route,
   method, statusCode, latencyMs). An unhandled server error also writes an
   `"unhandled server error"` line with the error name and message.
