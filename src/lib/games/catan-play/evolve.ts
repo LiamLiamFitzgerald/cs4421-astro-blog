@@ -2,7 +2,7 @@ import type { PlayerId } from "../catan/events";
 import type { PlayEvent } from "./events";
 import { LONGEST_ROAD_THRESHOLD, resolveExclusiveAward } from "../catan/awards";
 import { WINNING_POINTS } from "../catan/score";
-import { longestRoadLength, points, production, snakeOrder } from "./queries";
+import { discardsOwed, longestRoadLength, points, production, robberVictims, snakeOrder } from "./queries";
 import { addHands, BANK_TRADE_RATE, COSTS, emptyHand, type Hand, hand, PRODUCES, type Resource, subtractHands } from "./resources";
 import { initialPlayState, type PlayState } from "./state";
 import { TOPOLOGY, type VertexId } from "./topology";
@@ -22,6 +22,7 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
         board: event.board,
         players: [...event.players],
         hands: Object.fromEntries(event.players.map((p) => [p, emptyHand])),
+        robber: desertKey(event.board),
       };
     case "SetupSettlementPlaced":
       return withStartingResources(
@@ -66,6 +67,38 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
         ),
         event.player,
       );
+    case "CardsDiscarded": {
+      if (state.pending?.kind !== "discard") return state;
+      const stillOwed = Object.fromEntries(Object.entries(state.pending.owed).filter(([p]) => p !== event.player));
+      const next: PlayState = {
+        ...state,
+        hands: { ...state.hands, [event.player]: subtractHands(state.hands[event.player] ?? emptyHand, event.cards) },
+        bank: addHands(state.bank, event.cards),
+      };
+      const resume = state.pending.resume;
+      return {
+        ...next,
+        pending: Object.keys(stillOwed).length > 0 ? { kind: "discard", owed: stillOwed, resume } : { kind: "move-robber", resume },
+      };
+    }
+    case "RobberMoved": {
+      const resume = state.pending?.kind === "move-robber" ? state.pending.resume : "build-or-end";
+      const moved = { ...state, robber: event.hex };
+      const victims = robberVictims(moved, event.hex, event.player);
+      return { ...moved, pending: victims.length > 0 ? { kind: "steal", victims, resume } : null };
+    }
+    case "CardStolen": {
+      const card = hand({ [event.resource]: 1 });
+      return {
+        ...state,
+        hands: {
+          ...state.hands,
+          [event.victim]: subtractHands(state.hands[event.victim] ?? emptyHand, card),
+          [event.player]: addHands(state.hands[event.player] ?? emptyHand, card),
+        },
+        pending: null,
+      };
+    }
     case "BankTraded": {
       const given = hand({ [event.give]: BANK_TRADE_RATE });
       const got = hand({ [event.get]: 1 });
@@ -83,6 +116,11 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
 
 export function replayPlay(events: readonly PlayEvent[]): PlayState {
   return events.reduce(evolve, initialPlayState);
+}
+
+function desertKey(board: { hexes: readonly { q: number; r: number; terrain: string }[] }): string | null {
+  const desert = board.hexes.find((h) => h.terrain === "desert");
+  return desert ? `${desert.q},${desert.r}` : null;
 }
 
 /** The second setup settlement collects one of each resource around it. */
@@ -110,12 +148,22 @@ function applyRoll(state: PlayState, player: PlayerId, dice: readonly [number, n
     state.players.map((p) => [p, addHands(state.hands[p] ?? emptyHand, produced[p] ?? emptyHand)]),
   );
   const paid = state.players.reduce((sum, p) => addHands(sum, produced[p] ?? emptyHand), emptyHand);
-  return {
+  const rolled: PlayState = {
     ...state,
     phase: "main",
     hands,
     bank: subtractHands(state.bank, paid),
     lastRoll: { player, dice: [dice[0], dice[1]], total, produced, shortages },
+  };
+  if (total !== 7) return rolled;
+  // A 7: big hands are halved first, then the roller moves the robber.
+  const owed = discardsOwed(rolled);
+  return {
+    ...rolled,
+    pending:
+      Object.keys(owed).length > 0
+        ? { kind: "discard", owed, resume: "build-or-end" }
+        : { kind: "move-robber", resume: "build-or-end" },
   };
 }
 

@@ -29,6 +29,12 @@ export function describeStep(step: Step): string {
       return "Roll the dice to start the turn.";
     case "build-or-end":
       return "Build, trade with the bank, or end your turn.";
+    case "discard":
+      return "Discard half your cards (rounded down): you hold more than 7.";
+    case "move-robber":
+      return "Move the robber: choose a highlighted hex.";
+    case "steal":
+      return "Choose a player to steal a card from.";
   }
 }
 
@@ -74,6 +80,18 @@ export function describePlayViolation(v: PlayViolation): string {
       return `You need ${v.needed} ${v.give} to trade with the bank.`;
     case "BANK_EMPTY":
       return `The bank has no ${v.resource} left.`;
+    case "NOTHING_TO_DISCARD":
+      return "You do not need to discard.";
+    case "WRONG_DISCARD_COUNT":
+      return `Discard exactly ${v.owed} card${v.owed === 1 ? "" : "s"} (you chose ${v.given}).`;
+    case "NOT_IN_HAND":
+      return "You can only discard cards you hold.";
+    case "ROBBER_MUST_MOVE":
+      return "The robber must move to a different hex.";
+    case "NOT_A_VICTIM":
+      return v.victims.length > 0 ? `Steal from ${v.victims.join(" or ")}.` : "There is nobody to steal from.";
+    case "INVALID_PICK":
+      return "That card cannot be stolen.";
   }
 }
 
@@ -98,7 +116,7 @@ export function describeEdge(board: Board | null, edge: number): string {
 
 /** "Rolled 8. Ana gets 1 grain. Ben gets 2 ore." */
 export function describeRoll(roll: Roll, players: readonly PlayerId[]): string {
-  if (roll.total === 7) return `Rolled 7. Nothing is produced on a 7 (the robber is not in this version yet).`;
+  if (roll.total === 7) return "Rolled 7. Nobody collects; the robber moves.";
   const gains = players
     .filter((p) => RESOURCES.some((r) => (roll.produced[p]?.[r] ?? 0) > 0))
     .map((p) => `${p} gets ${describeHand(roll.produced[p] ?? ({} as Hand))}.`);
@@ -124,10 +142,25 @@ export function describePlayEvent(event: PlayEvent, state: PlayState): string {
       return `${event.player} ended their turn`;
     case "BankTraded":
       return `${event.player} traded ${BANK_TRADE_RATE} ${event.give} for 1 ${event.get}`;
+    case "CardsDiscarded":
+      return `${event.player} discarded ${describeHand(event.cards)}`;
+    case "RobberMoved":
+      return `${event.player} moved the robber to ${describeHex(state.board, event.hex)}`;
+    case "CardStolen":
+      // Which card was taken is private between the two players.
+      return `${event.player} stole a card from ${event.victim}`;
   }
 }
 
 /** Resources a player can offer the bank right now. */
 export function tradeableResources(h: Hand): Resource[] {
   return RESOURCES.filter((r) => h[r] >= BANK_TRADE_RATE);
+}
+
+/** "Forest 8": a hex by its terrain and number. */
+export function describeHex(board: Board | null, key: string): string {
+  const hex = board?.hexes.find((h) => `${h.q},${h.r}` === key);
+  if (!hex) return "the board";
+  const name = TERRAIN_NAMES[hex.terrain].name;
+  return hex.token === null ? `the ${name.toLowerCase()}` : `${name} ${hex.token}`;
 }

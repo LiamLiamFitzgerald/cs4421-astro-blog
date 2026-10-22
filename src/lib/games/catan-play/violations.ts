@@ -23,4 +23,10 @@ export type PlayViolation =
   | { readonly code: "NOT_YOUR_SETTLEMENT" }
   | { readonly code: "INVALID_TRADE"; readonly reason: "same-resource" | "unknown-resource" }
   | { readonly code: "NOT_ENOUGH_TO_TRADE"; readonly give: Resource; readonly needed: number }
-  | { readonly code: "BANK_EMPTY"; readonly resource: Resource };
+  | { readonly code: "BANK_EMPTY"; readonly resource: Resource }
+  | { readonly code: "NOTHING_TO_DISCARD" }
+  | { readonly code: "WRONG_DISCARD_COUNT"; readonly owed: number; readonly given: number }
+  | { readonly code: "NOT_IN_HAND" }
+  | { readonly code: "ROBBER_MUST_MOVE" }
+  | { readonly code: "NOT_A_VICTIM"; readonly victims: readonly PlayerId[] }
+  | { readonly code: "INVALID_PICK" };

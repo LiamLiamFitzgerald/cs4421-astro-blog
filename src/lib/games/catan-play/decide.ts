@@ -4,8 +4,15 @@ import { decide as decideScoring } from "../catan/decide";
 import { initialState as initialScoringState } from "../catan/state";
 import type { PlayCommand } from "./commands";
 import type { PlayEvent } from "./events";
-import { connectsToNetwork, currentPlayer, expectedStep, isOpenCorner, piecesLeft } from "./queries";
-import { BANK_TRADE_RATE, COSTS, emptyHand, handSize, isResource, missing, type Piece } from "./resources";
+import {
+  actingPlayer,
+  cardAt,
+  connectsToNetwork,
+  expectedStep,
+  isOpenCorner,
+  piecesLeft,
+} from "./queries";
+import { BANK_TRADE_RATE, COSTS, emptyHand, type Hand, handSize, isResource, missing, type Piece, RESOURCES } from "./resources";
 import type { PlayState, Step } from "./state";
 import { TOPOLOGY } from "./topology";
 import type { PlayViolation } from "./violations";
@@ -21,9 +28,9 @@ export function decide(state: PlayState, command: PlayCommand): Decision {
   if (!state.started) return err({ code: "GAME_NOT_STARTED" });
   if (state.winner !== null) return err({ code: "GAME_OVER", winner: state.winner });
 
-  const current = currentPlayer(state);
-  if (current !== null && command.player !== current) {
-    return err({ code: "NOT_YOUR_TURN", player: command.player, current });
+  const actor = actingPlayer(state);
+  if (actor !== null && command.player !== actor) {
+    return err({ code: "NOT_YOUR_TURN", player: command.player, current: actor });
   }
 
   switch (command.type) {
@@ -43,6 +50,12 @@ export function decide(state: PlayState, command: PlayCommand): Decision {
       return requireStep(state, "build-or-end") ?? buildCity(state, command.player, command.vertex);
     case "TradeWithBank":
       return requireStep(state, "build-or-end") ?? tradeWithBank(state, command.player, command.give, command.get);
+    case "DiscardCards":
+      return requireStep(state, "discard") ?? discardCards(state, command.player, command.cards);
+    case "MoveRobber":
+      return requireStep(state, "move-robber") ?? moveRobber(state, command.player, command.hex);
+    case "StealFrom":
+      return requireStep(state, "steal") ?? stealFrom(state, command.player, command.victim, command.pick);
     default:
       return assertNever(command);
   }
@@ -117,6 +130,31 @@ function tradeWithBank(state: PlayState, player: string, give: string, get: stri
   }
   if (state.bank[get] < 1) return err({ code: "BANK_EMPTY", resource: get });
   return ok([{ type: "BankTraded", player, give, get }]);
+}
+
+function discardCards(state: PlayState, player: string, cards: Hand): Decision {
+  const owed = state.pending?.kind === "discard" ? (state.pending.owed[player] ?? 0) : 0;
+  if (owed === 0) return err({ code: "NOTHING_TO_DISCARD" });
+  const given = RESOURCES.reduce((n, r) => n + (cards[r] ?? 0), 0);
+  const whole = RESOURCES.every((r) => Number.isInteger(cards[r] ?? 0) && (cards[r] ?? 0) >= 0);
+  if (!whole || given !== owed) return err({ code: "WRONG_DISCARD_COUNT", owed, given });
+  const held = state.hands[player] ?? emptyHand;
+  if (RESOURCES.some((r) => (cards[r] ?? 0) > held[r])) return err({ code: "NOT_IN_HAND" });
+  return ok([{ type: "CardsDiscarded", player, cards: Object.fromEntries(RESOURCES.map((r) => [r, cards[r] ?? 0])) as Hand }]);
+}
+
+function moveRobber(state: PlayState, player: string, hex: string): Decision {
+  if (!state.board?.hexes.some((h) => `${h.q},${h.r}` === hex)) return err({ code: "UNKNOWN_SPOT" });
+  if (hex === state.robber) return err({ code: "ROBBER_MUST_MOVE" });
+  return ok([{ type: "RobberMoved", player, hex }]);
+}
+
+function stealFrom(state: PlayState, player: string, victim: string, pick: number): Decision {
+  const victims = state.pending?.kind === "steal" ? state.pending.victims : [];
+  if (!victims.includes(victim)) return err({ code: "NOT_A_VICTIM", victims: [...victims] });
+  const resource = Number.isInteger(pick) && pick >= 0 ? cardAt(state.hands[victim] ?? emptyHand, pick) : null;
+  if (resource === null) return err({ code: "INVALID_PICK" });
+  return ok([{ type: "CardStolen", player, victim, resource }]);
 }
 
 const isDie = (n: number) => Number.isInteger(n) && n >= 1 && n <= 6;

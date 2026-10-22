@@ -7,7 +7,7 @@ import { replayPlay } from "./evolve";
 import { currentPlayer, expectedStep, production } from "./queries";
 import { BANK_START, emptyHand, hand, PRODUCES, RESOURCES } from "./resources";
 import { initialPlayState, type PlayState } from "./state";
-import { completeSetup, play } from "./test-helpers";
+import { completeSetup, play, resolvePending } from "./test-helpers";
 import { TOPOLOGY } from "./topology";
 
 const afterSetup = (players = ["ana", "ben", "cy"], seed = 4) =>
@@ -17,10 +17,10 @@ const when = (log: readonly PlayEvent[], command: Parameters<typeof decide>[1]) 
 
 describe("Feature: rolling the dice", () => {
   it("given the start of a turn, a roll is accepted and building is next", () => {
-    const log = play([{ type: "RollDice", player: "ana", dice: [3, 4] }], afterSetup());
+    const log = play([{ type: "RollDice", player: "ana", dice: [2, 4] }], afterSetup());
     const state = replayPlay(log);
-    expect(log.at(-1)).toEqual({ type: "DiceRolled", player: "ana", dice: [3, 4] });
-    expect(state.lastRoll).toMatchObject({ player: "ana", dice: [3, 4], total: 7 });
+    expect(log.at(-1)).toEqual({ type: "DiceRolled", player: "ana", dice: [2, 4] });
+    expect(state.lastRoll).toMatchObject({ player: "ana", dice: [2, 4], total: 6 });
     expect(expectedStep(state)).toBe("build-or-end");
   });
 
@@ -217,7 +217,8 @@ describe("Feature: resources are conserved (property)", () => {
           let log = afterSetup(["ana", "ben", "cy"], seed);
           for (const dice of rolls) {
             const player = currentPlayer(replayPlay(log)) ?? "";
-            log = play([{ type: "RollDice", player, dice }, { type: "EndTurn", player }], log);
+            log = resolvePending(play([{ type: "RollDice", player, dice }], log));
+            log = play([{ type: "EndTurn", player }], log);
           }
           const state = replayPlay(log);
           for (const r of RESOURCES) {

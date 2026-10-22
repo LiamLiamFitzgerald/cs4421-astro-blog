@@ -5,8 +5,29 @@ import type { EdgeId, VertexId } from "./topology";
 
 export type Phase = "setup" | "roll" | "main" | "finished";
 
-/** What the current player has to do next. */
-export type Step = "place-settlement" | "place-road" | "roll" | "build-or-end";
+/** What has to happen next. Discard and steal steps can belong to someone other than the current player. */
+export type Step =
+  | "place-settlement"
+  | "place-road"
+  | "roll"
+  | "build-or-end"
+  | "discard"
+  | "move-robber"
+  | "steal";
+
+/** Where play returns once the robber has been dealt with. */
+export type Resume = "roll" | "build-or-end";
+
+/**
+ * An interruption to normal turn order (ADR-011). While one is pending, only
+ * the step it names is allowed.
+ */
+export type Pending =
+  /** After a 7: these players still owe this many cards. Then the robber moves. */
+  | { readonly kind: "discard"; readonly owed: Readonly<Record<PlayerId, number>>; readonly resume: Resume }
+  | { readonly kind: "move-robber"; readonly resume: Resume }
+  /** The robber has moved; the mover picks one of these players to steal from. */
+  | { readonly kind: "steal"; readonly victims: readonly PlayerId[]; readonly resume: Resume };
 
 export interface Building {
   readonly player: PlayerId;
@@ -42,6 +63,9 @@ export interface PlayState {
   readonly hands: Readonly<Record<PlayerId, Hand>>;
   readonly bank: Hand;
   readonly lastRoll: Roll | null;
+  /** Key ("q,r") of the hex the robber is on; it produces nothing. */
+  readonly robber: string | null;
+  readonly pending: Pending | null;
   /** Holder of Longest Road, or null while vacant. */
   readonly longestRoad: PlayerId | null;
   readonly winner: PlayerId | null;
@@ -60,6 +84,8 @@ export const initialPlayState: PlayState = {
   hands: {},
   bank: BANK_START,
   lastRoll: null,
+  robber: null,
+  pending: null,
   longestRoad: null,
   winner: null,
 };
