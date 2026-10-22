@@ -4,7 +4,9 @@
 	width: 100%;
 	height: auto;
 	font-family: var(--font-heading);
-	font-variant-numeric: lining-nums;
+	font-variant-numeric: lining-nums tabular-nums;
+	/* The board sits on the page like a physical object on a table. */
+	filter: drop-shadow(0 2px 2px rgb(45 42 36 / 0.14)) drop-shadow(0 12px 18px rgb(45 42 36 / 0.14));
 }
 .board__sea {
 	fill: var(--color-sea);
@@ -12,10 +14,23 @@
 	stroke-width: 6;
 	stroke-linejoin: round;
 }
+.board__coast {
+	fill: none;
+	stroke: rgb(247 242 228 / 0.28);
+	stroke-width: 1;
+}
 .board__tile {
-	stroke: rgb(43 36 25 / 0.35);
+	stroke: rgb(45 42 36 / 0.4);
 	stroke-width: 1.5;
 	stroke-linejoin: round;
+}
+/* A faint light edge inside each tile, so it reads as a piece of thick card. */
+.board__bevel {
+	fill: none;
+	stroke: rgb(255 253 247 / 0.2);
+	stroke-width: 1.5;
+	stroke-linejoin: round;
+	pointer-events: none;
 }
 .board__hex--forest .board__tile { fill: var(--terrain-forest); }
 .board__hex--pasture .board__tile { fill: var(--terrain-pasture); }
@@ -24,8 +39,8 @@
 .board__hex--mountains .board__tile { fill: var(--terrain-mountains); }
 .board__hex--desert .board__tile { fill: var(--terrain-desert); }
 .board__glyph {
-	fill: rgb(20 20 10 / 0.22);
-	stroke: rgb(20 20 10 / 0.22);
+	fill: rgb(30 28 20 / 0.2);
+	stroke: rgb(30 28 20 / 0.2);
 	stroke-width: 1.4;
 	stroke-linecap: round;
 }
@@ -34,10 +49,18 @@
 .board__hex--desert .board__glyph {
 	fill: none;
 }
+.board__token-shadow {
+	fill: rgb(30 28 20 / 0.28);
+}
 .board__token {
 	fill: var(--color-token);
-	stroke: rgb(43 36 25 / 0.45);
+	stroke: var(--color-token-edge);
 	stroke-width: 1;
+}
+.board__token-ring {
+	fill: none;
+	stroke: var(--color-token-edge);
+	stroke-width: 0.75;
 }
 .board__number {
 	font-size: 17px;
@@ -53,4 +76,171 @@
 }
 .board__pip--red {
 	fill: var(--color-token-red);
+}
+
+/* Play mode: pieces in seat colours, outlined so they read on any terrain. */
+.piece {
+	--seat-colour: var(--color-ink-muted);
+}
+.piece__body {
+	fill: var(--seat-colour);
+	stroke: var(--color-surface);
+	stroke-width: 2;
+	stroke-linejoin: round;
+	filter: drop-shadow(0 1.5px 1px rgb(20 20 10 / 0.45));
+}
+.piece__seat {
+	font-family: var(--font-body);
+	font-size: 10px;
+	font-weight: 700;
+	text-anchor: middle;
+	fill: #fff;
+	pointer-events: none;
+}
+.piece__shape {
+	transform-box: fill-box;
+	transform-origin: 50% 100%;
+}
+/* Placing a piece: a short settle into place, like setting it on the table. */
+.piece--new {
+	animation: piece-place 260ms var(--ease-out);
+}
+.piece--road.piece--new {
+	animation: road-place 260ms var(--ease-out);
+}
+@keyframes piece-place {
+	from {
+		transform: translateY(-6px) scale(1.15);
+		opacity: 0;
+	}
+}
+@keyframes road-place {
+	from {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.piece--new,
+	.piece--road.piece--new {
+		animation: none;
+	}
+}
+.piece--city .piece__body {
+	stroke-width: 2.2;
+}
+.piece__road-edge {
+	stroke: var(--color-surface);
+	stroke-width: 10;
+	stroke-linecap: round;
+}
+.piece__road {
+	stroke: var(--seat-colour);
+	stroke-width: 6;
+	stroke-linecap: round;
+}
+
+/* Legal spots for the current action: quiet rings that brighten under the pointer. */
+.board__target {
+	cursor: pointer;
+	fill: rgb(251 248 239 / 0.7);
+	stroke: var(--color-forest);
+	stroke-width: 2;
+	outline: none;
+	transition:
+		fill var(--duration-fast) var(--ease-out),
+		stroke-width var(--duration-fast) var(--ease-out);
+	animation: target-breathe 2.4s ease-in-out infinite;
+}
+.board__target:hover,
+.board__target:focus-visible {
+	fill: var(--terrain-fields);
+	stroke: var(--color-forest-strong);
+	stroke-width: 3.5;
+}
+.board__target--edge {
+	fill: none;
+}
+.board__target-hit {
+	fill: transparent;
+	stroke: none;
+}
+.board__target-line {
+	stroke: var(--color-surface);
+	stroke-width: 5;
+	stroke-dasharray: 6 5;
+	stroke-linecap: round;
+}
+.board__target--edge:hover .board__target-line,
+.board__target--edge:focus-visible .board__target-line {
+	stroke: var(--terrain-fields);
+	stroke-width: 7;
+	stroke-dasharray: none;
+}
+@keyframes target-breathe {
+	50% {
+		opacity: 0.75;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.board__target {
+		animation: none;
+	}
+}
+/* Bigger touch targets when the board is drawn small. */
+@media (max-width: 40rem) {
+	circle.board__target {
+		r: 19px;
+	}
+}
+
+/* The robber: the one dark piece, so it reads on every terrain. */
+.robber {
+	pointer-events: none;
+}
+.robber__body {
+	fill: var(--color-ink);
+	stroke: var(--color-surface);
+	stroke-width: 1.5;
+	filter: drop-shadow(0 1.5px 1px rgb(20 20 10 / 0.5));
+}
+.robber__base {
+	fill: rgb(20 20 10 / 0.35);
+}
+/* Hex targets ring the number token, leaving the number readable. */
+.board__target--hex {
+	fill: rgb(251 248 239 / 0.15);
+	stroke-width: 3;
+}
+.board__target--hex:hover,
+.board__target--hex:focus-visible {
+	fill: rgb(219 180 71 / 0.35);
+}
+
+/* Harbours: ivory signs off the coast; 2:1 signs take the colour of their resource's terrain. */
+.harbour__pier {
+	stroke: var(--color-sand);
+	stroke-width: 3;
+	stroke-linecap: round;
+}
+.harbour__sign {
+	fill: var(--color-token);
+	stroke: var(--color-sea-deep);
+	stroke-width: 1.5;
+}
+.harbour--lumber .harbour__sign { fill: var(--terrain-forest); }
+.harbour--brick .harbour__sign { fill: var(--terrain-hills); }
+.harbour--wool .harbour__sign { fill: var(--terrain-pasture); }
+.harbour--grain .harbour__sign { fill: var(--terrain-fields); }
+.harbour--ore .harbour__sign { fill: var(--terrain-mountains); }
+.harbour__rate {
+	font-family: var(--font-body);
+	font-size: 10px;
+	font-weight: 700;
+	text-anchor: middle;
+	fill: var(--color-ink);
+}
+.harbour--lumber .harbour__rate,
+.harbour--brick .harbour__rate,
+.harbour--ore .harbour__rate {
+	fill: #fff;
 }

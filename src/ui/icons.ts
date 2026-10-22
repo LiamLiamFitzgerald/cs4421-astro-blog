@@ -20,6 +20,12 @@ export const ICONS = {
 	info: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 11v6M12 7.5v.5'],
 	close: ['M6 6l12 12M18 6 6 18'],
 	code: ['M8 7 3 12l5 5M16 7l5 5-5 5M14 4l-4 16'],
+	// Resources
+	lumber: ['M12 3 6 12h3l-4 6h14l-4-6h3Z', 'M12 18v3'],
+	brick: ['M3 7h18v10H3Z', 'M3 12h18M9 7v5M15 12v5'],
+	wool: ['M7 16a3 3 0 0 1-.5-6A4 4 0 0 1 14 8.5 3.5 3.5 0 0 1 18 15a2.5 2.5 0 0 1-1 1Z', 'M8 16v3M16 16v3'],
+	grain: ['M12 21V8', 'M12 8c-2-1-3-3-3-5 2 0 3 2 3 5ZM12 8c2-1 3-3 3-5-2 0-3 2-3 5Z', 'M12 13c-2-1-4-2-4-5 2 0 4 2 4 5ZM12 13c2-1 4-2 4-5-2 0-4 2-4 5Z'],
+	ore: ['M4 18 8 9l5-3 6 4 1 8Z', 'M8 9l3 4 2-7M11 13l9 5'],
 } as const;
 
 export type IconName = keyof typeof ICONS;

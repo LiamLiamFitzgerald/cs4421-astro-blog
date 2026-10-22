@@ -1,0 +1,65 @@
+# Auto-merge safe Dependabot updates (ADR-012, issue #108).
+#
+# Patch and minor bumps get auto-merge enabled; GitHub then merges them only
+# once the required `validate` check passes. Major bumps are left for a human.
+# When develop moves, open Dependabot PRs fall behind (the ruleset requires
+# up-to-date branches), so we ask Dependabot to rebase them, which reruns CI.
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable:
+    name: Enable auto-merge
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enable auto-merge for patch and minor updates
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sweep:
+    name: Sweep open Dependabot PRs
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge on eligible PRs and rebase stale ones
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh pr list --author 'app/dependabot' --base develop --state open \
+            --json number,title,mergeStateStatus --limit 50 |
+          jq -c '.[]' | while read -r pr; do
+            n=$(jq -r .number <<<"$pr")
+            title=$(jq -r .title <<<"$pr")
+            state=$(jq -r .mergeStateStatus <<<"$pr")
+            # Titles read "... from 4.1.2 to 5.0.0": compare the leading numbers.
+            from=$(sed -nE 's/.* from v?([0-9]+)[.0-9]* to .*/\1/p' <<<"$title")
+            to=$(sed -nE 's/.* to v?([0-9]+)[.0-9]*.*/\1/p' <<<"$title")
+            if [ -z "$from" ] || [ -z "$to" ] || [ "$from" != "$to" ]; then
+              echo "#$n: major or unclear update, left for a human ($title)"
+              continue
+            fi
+            gh pr merge --auto --squash "$n" || echo "#$n: could not enable auto-merge"
+            if [ "$state" = "BEHIND" ]; then
+              gh pr comment "$n" --body '@dependabot rebase'
+              echo "#$n: asked Dependabot to rebase"
+            fi
+          done

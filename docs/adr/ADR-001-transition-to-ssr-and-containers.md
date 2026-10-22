@@ -1,6 +1,6 @@
 # ADR-001: Move from a static site to SSR in a container on ECS Fargate
 
-- **Status:** Proposed (2026-10-12)
+- **Status:** Proposed (2026-10-12); hosting (points 3 and 6) superseded by ADR-010
 - **Deciders:** Liam Fitzgerald
 
 ## Context
