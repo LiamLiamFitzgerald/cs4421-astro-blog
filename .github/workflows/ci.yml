@@ -49,8 +49,24 @@ jobs:
       - name: Build site
         run: npm run build
 
+      # ADR-017: the runner already has the libraries headless Chromium needs,
+      # so skip --with-deps (it spent minutes in apt-get fetching fonts and xvfb
+      # from a slow mirror). The browser is cached per Playwright version, so a
+      # Dependabot bump downloads the matching one by itself.
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browser
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
 
       - name: End-to-end tests
         run: npm run test:e2e
