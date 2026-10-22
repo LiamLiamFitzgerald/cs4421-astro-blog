@@ -49,8 +49,37 @@ jobs:
       - name: Build site
         run: npm run build
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
       - name: Build container image
         run: docker build -t catan-app:ci .
+
+      # The Lambda image adds the Web Adapter from public.ecr.aws, which
+      # rate-limits anonymous pulls, and GitHub's shared runner IPs hit that
+      # limit even after retries. PR builds have no AWS sign-in, so this step
+      # is best effort: a failure shows as a warning, not a red check. The
+      # deploy workflow signs in to ECR Public and does the real Lambda build.
+      - name: Build Lambda image (best effort, see comment)
+        continue-on-error: true
+        run: |
+          for attempt in 1 2 3; do
+            docker build --target lambda -t catan-app:lambda-ci . && exit 0
+            echo "Attempt $attempt failed; retrying in $((attempt * 30))s"
+            sleep $((attempt * 30))
+          done
+          exit 1
 
       - name: Install CDK dependencies
         run: npm ci

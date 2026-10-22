@@ -31,6 +31,14 @@ git pull
 git checkout -b feat/<name>
 ```
 
+## UI and design system
+
+Every page uses `src/layouts/Layout.astro`. Colours, type, spacing, radii and
+shadows are tokens in `src/styles/tokens.css`; shared buttons, fields, notices,
+panels and dialogs are classes in `src/styles/base.css`; icons come from
+`src/ui/icons.ts` (via `Icon.astro` on the server). Use these rather than
+writing new values. See [ADR-007](adr/ADR-007-design-system.md).
+
 ## Commits
 
 Conventional Commits: `type(scope): summary`, for example
@@ -60,11 +68,15 @@ Workflow: `.github/workflows/ci.yml` (name `CI`, job `validate`), run on pull
 requests into `main` and `develop`, on Node 22:
 
 1. `npm ci`
-2. `npm run lint`: ESLint
-3. `npm run check`: `astro check` (type check)
-4. `npm run arch`: dependency-cruiser checks the layer rules in
+2. Commit messages are checked with commitlint (Conventional Commits)
+3. `npm run lint`: ESLint
+4. `npm run check`: `astro check` (type check)
+5. `npm run arch`: dependency-cruiser checks the layer rules in
    `.dependency-cruiser.cjs` (see ADR-004)
-5. `npm run test:unit`: Vitest
+6. `npm run test:unit`: Vitest (unit, BDD-style and property-based tests)
+7. `npm run build`, then `npm run test:e2e`: Playwright plays the scoreboard in
+   Chromium against the production server; the report is uploaded on failure
+8. The container image is built, and the CDK app is tested and synthesised
 
 Mutation testing (`npm run test:mutation`, Stryker) is slow, so it runs weekly and
 on demand in `.github/workflows/mutation.yml`, not on every PR. It fails below a
@@ -80,21 +92,34 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - `npm run build` then `node dist/server/entry.mjs` (set `PORT` and `HOST`).
 - `GET /api/health` returns `{ status, uptime, timestamp }`.
 - Every request writes one JSON log line to stdout (timestamp, level, route,
-  method, statusCode, latencyMs).
+  method, statusCode, latencyMs). An unhandled server error also writes an
+  `"unhandled server error"` line with the error name and message.
+- Unexpected errors in visitors' browsers are sent to `POST /api/client-errors`
+  and logged at level `error` with `"message":"client error"`, `context`,
+  `errorName`, `errorMessage` and `page`. To find them, filter the logs (or
+  CloudWatch) for `"client error"`. Reports are validated and capped at 4 KB;
+  a page sends at most ten.
 - `docker build -t catan-app .` builds the production image; CI builds it too.
-- Production runs on ECS Fargate (`cdk/lib/app-service-stack.ts`): an ALB with
-  CloudFront in front, health-checked on `/api/health`, with a circuit breaker
-  that rolls back a failed deployment.
-- Its whole lifecycle is the **App Environment** workflow
+  `docker build --target lambda .` adds the AWS Lambda Web Adapter for Lambda
+  (pulled from public.ecr.aws, which rate-limits anonymous pulls; CI retries).
+- Production runs on AWS Lambda (`cdk/lib/app-lambda-stack.ts`, ADR-010): the
+  same image, with the AWS Lambda Web Adapter forwarding requests to the Node
+  server, behind a function URL and CloudFront. The adapter waits for
+  `/api/health` before serving.
+- Deploys publish a new Lambda version and CodeDeploy shifts the `live` alias
+  to it as a canary (10% for 5 minutes). If the error alarm fires, CodeDeploy
+  rolls back to the previous version automatically.
+- Manual rollback: point the alias back at the previous version
+  (`aws lambda update-alias --function-name <name> --name live --function-version <n>`),
+  or redeploy the previous commit.
+- Its lifecycle is the **App Environment** workflow
   (`.github/workflows/app-environment.yml`), manual only: `deploy`, `destroy`, or
-  `rehearse` (deploy, smoke-test `/api/health`, then always destroy). A nightly
-  schedule (01:00 UTC) also destroys the stack as a safety net.
-- Cost: roughly $0.06/hour (about $1.40/day) while the stack exists. Rehearse
-  the day before the defence, deploy for the demo, destroy afterwards.
-- Roll back by redeploying the previous commit; the image is built from the
-  commit's Dockerfile and the circuit breaker handles failed rollouts.
-- The old S3 static deploy is retired (manual-only) until the Fargate deploy has
-  been verified, then it is removed.
+  `rehearse` (deploy, smoke-test `/api/health`, then always destroy).
+- Cost: close to zero while idle (no load balancer or always-on task); requests
+  fall within the Lambda and CloudFront free allowances at this traffic.
+- The ECS Fargate stack (`cdk/lib/app-service-stack.ts`, ADR-001) is commented
+  out of `cdk/bin/cdk.ts` but kept and tested, so it can be restored.
+- The old S3 static deploy stays retired (manual-only).
 
 ## Branch protection
 
@@ -129,11 +154,24 @@ describe('Feature: base victory points', () => {
 
 Write the test from the acceptance criteria first, then the implementation.
 
+- Unit tests sit next to the code (`*.test.ts`); domain rules also get
+  property-based tests with fast-check.
+- Browser behaviour is tested in `e2e/` with Playwright, against the built
+  server (`npm run build && npm run test:e2e`). Locally, set
+  `PLAYWRIGHT_CHROMIUM_PATH` to use an installed Chromium, or run
+  `npx playwright install chromium` once.
+- Every user-visible failure path (refused command, storage failure, blocked
+  storage) has an e2e test.
+
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `src/` | Astro site (pages, components, content) |
+| `src/lib/` | Game core, app layer, adapters and observability (no DOM) |
+| `src/lib/games/catan-play/` | Rules for playing on the site (ADR-008): board graph, setup, turns, building |
+| `src/ui/` | Browser code: board drawing, icons, play and scoreboard controllers, feedback, error reporting |
+| `src/pages/`, `src/components/`, `src/layouts/`, `src/styles/` | Routes, shared components and the design system |
+| `e2e/` | Playwright browser tests |
 | `cdk/` | AWS CDK (TypeScript) infrastructure app |
 | `docs/adr/` | Architecture decision records |
 | `docs/retrospectives/` | Sprint retrospectives |

@@ -1,3 +1,4 @@
+import type { Board } from "./board";
 import type { PlayerId } from "./events";
 
 /** What one player has on the table. */
@@ -20,6 +21,8 @@ export interface CatanState {
   readonly longestRoad: PlayerId | null;
   /** First player to reach the winning total, or null while the game is open. */
   readonly winner: PlayerId | null;
+  /** The dealt board, or null for games stored before boards existed. */
+  readonly board: Board | null;
 }
 
 export const emptyPlayer: PlayerState = {
@@ -37,4 +40,5 @@ export const initialState: CatanState = {
   largestArmy: null,
   longestRoad: null,
   winner: null,
+  board: null,
 };

@@ -1,0 +1,123 @@
+/*
+ * Design tokens: the single source for colour, type, spacing, radii, shadows
+ * and motion. Components use these variables, never raw values. See ADR-007.
+ */
+:root {
+	/*
+	 * Colour roles. Each colour has one job; components use the role, never a
+	 * raw value. The interface stays calm and neutral so the board carries the
+	 * colour. See ADR-007.
+	 */
+
+	/* Backgrounds: parchment page, ivory surfaces, a sunk tone for wells. */
+	--color-bg: #f5efe0;
+	--color-surface: #fbf8ef;
+	--color-surface-raised: #fffdf7;
+	--color-surface-sunk: #ece4cf;
+	/* Sage: secondary surfaces and quiet highlights (the active player, selected options). */
+	--color-sage: #c9d3b6;
+	--color-sage-tint: #e1e7d3;
+
+	/* Text and lines: warm charcoal, stone grey. */
+	--color-ink: #2d2a24;
+	--color-ink-muted: #69655a;
+	--color-ink-disabled: #77715f;
+	--color-ink-inverse: #f7f2e4;
+	--color-line: #ddd4bf;
+	--color-line-strong: #bcb197;
+
+	/* Forest: navigation, primary actions and strong anchors. */
+	--color-forest: #1f3b2c;
+	--color-forest-strong: #152a1f;
+	--color-forest-tint: var(--color-sage-tint);
+
+	/* Accents, from the board's materials. */
+	--color-terracotta: #a65a3d;
+	--color-terracotta-strong: #8a4630;
+	--color-terracotta-tint: #f1ded3;
+	--color-wheat: #c99a2e;
+	--color-wheat-tint: #f3e6c4;
+	--color-slate: #5d6f80;
+	--color-sand: #d8c79c;
+	--color-gold: var(--color-wheat);
+	--color-gold-tint: var(--color-wheat-tint);
+
+	/* Feedback */
+	--color-success: #2f5e3a;
+	--color-success-tint: var(--color-sage-tint);
+	--color-danger: #9b3324;
+	--color-danger-strong: #7f2919;
+	--color-danger-tint: #f4ddd6;
+	--color-focus: #2f6e8e;
+
+	/* Board: the one colourful object on every screen. */
+	--terrain-forest: #2f5e3a;
+	--terrain-pasture: #9fb37a;
+	--terrain-fields: #dbb447;
+	--terrain-hills: #b8643e;
+	--terrain-mountains: #7a8796;
+	--terrain-desert: #e0d2a6;
+	--color-sea: #3a6f87;
+	--color-sea-deep: #2b5568;
+	--color-token: #fbf5e3;
+	--color-token-edge: #d9ccaa;
+	--color-token-red: #a8301f;
+
+	/* Player seats. Always shown with the seat number, never colour alone.
+	   Each passes 4.5:1 against white numerals and reads on every terrain
+	   thanks to the ivory outline on pieces. */
+	--seat-1: #b33a2a;
+	--seat-2: #2c5c9c;
+	--seat-3: #a35a0e;
+	--seat-4: #2b6f73;
+	--seat-5: #6b4a8c;
+	--seat-6: #7a5633;
+
+	/* Type: Alegreya for headings, Alegreya Sans for the interface. Scale ratio 1.25. */
+	--font-heading: var(--font-display), Georgia, serif;
+	--font-body: var(--font-ui), system-ui, sans-serif;
+	--text-xs: 0.8rem;
+	--text-s: 0.9rem;
+	--text-m: 1rem;
+	--text-l: 1.25rem;
+	--text-xl: 1.563rem;
+	--text-2xl: 1.953rem;
+	--text-3xl: 2.441rem;
+	--leading-tight: 1.15;
+	--leading-body: 1.55;
+
+	/* Spacing: 4px base. */
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-5: 1.5rem;
+	--space-6: 2rem;
+	--space-7: 3rem;
+	--space-8: 4.5rem;
+
+	/* Radii: small for controls, medium for panels, full for tokens and badges. */
+	--radius-s: 6px;
+	--radius-m: 10px;
+	--radius-full: 999px;
+
+	/* Shadows: warm-tinted and low, so surfaces read as paper on a table. */
+	--shadow-1: 0 1px 2px rgb(45 42 36 / 0.06);
+	--shadow-2: 0 2px 4px rgb(45 42 36 / 0.08), 0 12px 32px rgb(45 42 36 / 0.16);
+	/* The board is a physical object on the table. */
+	--shadow-board: 0 2px 3px rgb(45 42 36 / 0.12), 0 14px 28px rgb(45 42 36 / 0.16);
+
+	--duration-fast: 120ms;
+	--duration-medium: 240ms;
+	--ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+	--content-width: 72rem;
+	--prose-width: 40rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--duration-fast: 0ms;
+		--duration-medium: 0ms;
+	}
+}

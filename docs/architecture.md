@@ -91,3 +91,10 @@ rules, all gated in CI. See [ADR-005](adr/ADR-005-verification-strategy.md).
 - [ADR-003](adr/ADR-003-event-sourced-game-core.md): event-sourced game core
 - [ADR-004](adr/ADR-004-layered-architecture-and-dependency-rules.md): layers and enforced dependency rules
 - [ADR-005](adr/ADR-005-verification-strategy.md): verification strategy
+- [ADR-006](adr/ADR-006-scoreboard-ui-approach.md): scoreboard UI approach
+- [ADR-007](adr/ADR-007-design-system.md): design system and visual identity
+- [ADR-008](adr/ADR-008-play-mode-game-module.md): play mode as a second game module
+- [ADR-009](adr/ADR-009-art-direction.md): art direction and colour roles
+- [ADR-010](adr/ADR-010-move-hosting-to-lambda.md): move hosting from Fargate to Lambda
+- [ADR-011](adr/ADR-011-full-game-interruptions-and-randomness.md): interruptions, acting player and randomness in the full game
+- [ADR-012](adr/ADR-012-dependabot-auto-merge.md): auto-merge for safe Dependabot updates

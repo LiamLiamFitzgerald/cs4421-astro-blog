@@ -7,3 +7,6 @@ reports
 .git
 .github
 docs
+e2e
+playwright-report
+test-results

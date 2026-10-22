@@ -1,63 +1,55 @@
-# Astro Starter Kit: Blog
+# Catan Tracker
+
+A scorekeeper for Settlers of Catan, built as the cumulative project for
+CS4421 DevOps. The app is small on purpose; the project is the engineering
+around it: an event-sourced game core with enforced architecture rules,
+automated checks on every pull request, a container image, infrastructure as
+code and versioned releases.
+
+## Quick start
+
+Requires Node 22.12 or newer.
 
 ```sh
-npm create astro@latest -- --template blog
+npm ci
+npm run dev            # http://localhost:4321
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Production-like run (the same server the container uses):
 
-Features:
-
-- ✅ Minimal styling (make it your own!)
-- ✅ 100/100 Lighthouse performance
-- ✅ SEO-friendly with canonical URLs and Open Graph data
-- ✅ Sitemap support
-- ✅ RSS Feed support
-- ✅ Markdown & MDX support
-
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
-├── public/
-├── src/
-│   ├── assets/
-│   ├── components/
-│   ├── content/
-│   ├── layouts/
-│   └── pages/
-├── astro.config.mjs
-├── README.md
-├── package.json
-└── tsconfig.json
+```sh
+npm run build
+HOST=127.0.0.1 PORT=4321 node dist/server/entry.mjs
+curl http://localhost:4321/api/health
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Commands
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+| Command                 | What it does                                          |
+| :---------------------- | :---------------------------------------------------- |
+| `npm run dev`           | Dev server with live reload                           |
+| `npm run build`         | Production build into `dist/`                         |
+| `npm run lint`          | ESLint                                                |
+| `npm run check`         | Astro and TypeScript type check                       |
+| `npm run arch`          | Architecture (dependency) rules, see ADR-004          |
+| `npm run test:unit`     | Unit, BDD-style and property-based tests (Vitest)     |
+| `npm run test:e2e`      | Browser tests against the built server (Playwright)   |
+| `npm run test:mutation` | Mutation testing of the domain code (Stryker)         |
 
-The `src/content/` directory contains "collections" of related Markdown and MDX documents. Use `getCollection()` to retrieve posts from `src/content/blog/`, and type-check your frontmatter using an optional schema. See [Astro's Content Collections docs](https://docs.astro.build/en/guides/content-collections/) to learn more.
+## Layout
 
-Any static assets, like images, can be placed in the `public/` directory.
+```
+src/lib/games/catan   game rules: decide / evolve, pure TypeScript
+src/lib/app           application layer and ports (EventStore)
+src/lib/adapters      EventStore adapters (memory, browser storage)
+src/lib/observability logging and health
+src/pages             routes, including /api/health
+e2e/                  Playwright tests
+cdk/                  AWS infrastructure (CDK)
+docs/                 architecture, ADRs, handbook, evidence
+```
 
-## 🧞 Commands
+## Documentation
 
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
-
-## Credit
-
-This theme is based off of the lovely [Bear Blog](https://github.com/HermanMartinus/bearblog/).
+- [Architecture](docs/architecture.md) and [decision records](docs/adr/)
+- [Handbook](docs/handbook.md): branching, commits, releases, running the app
