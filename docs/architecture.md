@@ -101,3 +101,4 @@ rules, all gated in CI. See [ADR-005](adr/ADR-005-verification-strategy.md).
 - [ADR-013](adr/ADR-013-liveness-and-readiness.md): separate liveness and readiness endpoints
 - [ADR-014](adr/ADR-014-game-log-in-error-handling.md): the game log in error handling
 - [ADR-015](adr/ADR-015-alarms-notifications-dashboard.md): alarms, notifications and dashboard
+- [ADR-016](adr/ADR-016-smoke-tests-uptime-rollback-drill.md): smoke tests, uptime check and rollback drill

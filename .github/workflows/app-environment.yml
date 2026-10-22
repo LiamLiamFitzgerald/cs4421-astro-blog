@@ -3,8 +3,11 @@ name: App Environment (Lambda)
 # Lifecycle of AppLambdaStack (ADR-010): the app image on AWS Lambda behind
 # CloudFront. Nothing runs while idle, so it costs close to nothing, but it is
 # still only deployed on demand:
-#   deploy   - build the image, deploy (CodeDeploy canary), smoke-test /api/health
+#   deploy   - build the image, deploy (CodeDeploy canary), run the smoke test
 #   rehearse - deploy, smoke-test, then ALWAYS destroy (proof it works)
+#   drill    - rollback drill (ADR-016): deploy a good release, then one that
+#              fails on purpose under traffic, and prove CodeDeploy rolled it
+#              back and the good release still serves. Leaves the good one up.
 #   destroy  - delete the stack
 # The nightly safety-net destroy used for Fargate (ADR-001) is no longer needed.
 on:
@@ -13,7 +16,7 @@ on:
       action:
         description: "What to do with the app environment"
         type: choice
-        options: [deploy, rehearse, destroy]
+        options: [deploy, rehearse, drill, destroy]
         default: rehearse
 
 permissions:
@@ -51,7 +54,7 @@ jobs:
       # Signed-in pulls from public.ecr.aws (the Lambda Web Adapter) get a much
       # higher rate limit than anonymous ones.
       - name: Sign in to Amazon ECR Public
-        if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
+        if: env.ACTION != 'destroy'
         run: |
           aws ecr-public get-login-password --region us-east-1 \
             | docker login --username AWS --password-stdin public.ecr.aws \
@@ -62,7 +65,7 @@ jobs:
         working-directory: cdk
 
       - name: Deploy with CDK (builds and pushes the image, canary via CodeDeploy)
-        if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
+        if: env.ACTION != 'destroy'
         run: npx cdk deploy AppLambdaStack --require-approval never --outputs-file outputs.json
         working-directory: cdk
         env:
@@ -70,19 +73,65 @@ jobs:
           # and not committed. Leave it unset to deploy without email alerts.
           ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
 
-      - name: Smoke test /api/health
-        if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
+      - name: Smoke test (live, ready, pages, assets)
+        if: env.ACTION != 'destroy'
+        run: |
+          SITE=$(node -p "require('./cdk/outputs.json').AppLambdaStack.SiteUrl")
+          echo "SITE=$SITE" >> "$GITHUB_ENV"
+          echo "Site: $SITE" >> "$GITHUB_STEP_SUMMARY"
+          bash scripts/smoke-test.sh "$SITE"
+
+      # ---------------------------------------------------- rollback drill (ADR-016)
+
+      - name: "Drill: record the good release"
+        if: env.ACTION == 'drill'
         working-directory: cdk
         run: |
-          URL=$(node -p "require('./outputs.json').AppLambdaStack.HealthUrl")
-          echo "Checking $URL"
-          for i in $(seq 1 20); do
-            CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' "$URL" || true)
-            if [ "$CODE" = "200" ]; then cat /tmp/health.json; echo; exit 0; fi
-            echo "attempt $i: HTTP $CODE"; sleep 15
-          done
-          echo "Health check failed" >&2
-          exit 1
+          FN=$(node -p "require('./outputs.json').AppLambdaStack.FunctionName")
+          GOOD=$(aws lambda get-alias --function-name "$FN" --name live --query FunctionVersion --output text)
+          echo "FN=$FN" >> "$GITHUB_ENV"
+          echo "GOOD_VERSION=$GOOD" >> "$GITHUB_ENV"
+          echo "Good release: version $GOOD" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: "Drill: deploy a release that fails on purpose, under traffic"
+        if: env.ACTION == 'drill'
+        working-directory: cdk
+        env:
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+        run: |
+          # Traffic during the 5-minute canary, so the broken 10% answers 500s
+          # and the ServerErrors alarm fires.
+          ( for i in $(seq 1 150); do curl -s -o /dev/null "$SITE/catan" || true; sleep 4; done ) &
+          TRAFFIC=$!
+          if npx cdk deploy AppLambdaStack -c rollbackDrill=true --require-approval never; then
+            kill "$TRAFFIC" || true
+            echo "::error::The broken release was NOT rolled back. The canary alarm did not stop it."
+            exit 1
+          fi
+          kill "$TRAFFIC" || true
+          echo "The broken release was rejected, as intended." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: "Drill: prove the good release is still live"
+        if: env.ACTION == 'drill'
+        working-directory: cdk
+        run: |
+          NOW=$(aws lambda get-alias --function-name "$FN" --name live --query FunctionVersion --output text)
+          DRILL=$(aws lambda get-function-configuration --function-name "$FN" --qualifier live \
+            --query 'Environment.Variables.ROLLBACK_DRILL' --output text)
+          echo "live alias: version $NOW (was $GOOD_VERSION), ROLLBACK_DRILL=$DRILL" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$NOW" = "$GOOD_VERSION" ] || { echo "::error::live moved to version $NOW"; exit 1; }
+          [ "$DRILL" = "None" ] || { echo "::error::the live release is the broken one"; exit 1; }
+          APP=$(node -p "require('./outputs.json').AppLambdaStack.DeployApplication")
+          GROUP=$(node -p "require('./outputs.json').AppLambdaStack.DeploymentGroupName")
+          LAST=$(aws deploy list-deployments --application-name "$APP" --deployment-group-name "$GROUP" \
+            --query 'deployments[0]' --output text)
+          aws deploy get-deployment --deployment-id "$LAST" \
+            --query 'deploymentInfo.{status:status,rollback:rollbackInfo,error:errorInformation}' --output json \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: "Drill: smoke test after the rollback"
+        if: env.ACTION == 'drill'
+        run: SMOKE_ATTEMPTS=4 bash scripts/smoke-test.sh "$SITE"
 
       - name: Destroy AppLambdaStack
         # Runs for destroy, and always after a rehearsal.

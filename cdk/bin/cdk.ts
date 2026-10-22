@@ -42,4 +42,6 @@ new AppLambdaStack(app, 'AppLambdaStack', {
   env: { account: '480174683659', region: 'us-east-1' },
   // ADR-015: alarm email from the environment (a GitHub variable), never committed.
   alarmEmail: process.env.ALARM_EMAIL || undefined,
+  // ADR-016: `cdk deploy -c rollbackDrill=true` deploys a release that fails on purpose.
+  rollbackDrill: app.node.tryGetContext('rollbackDrill') === 'true',
 });

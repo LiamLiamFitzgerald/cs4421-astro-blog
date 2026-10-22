@@ -1,0 +1,36 @@
+name: Uptime check
+
+# Checks the live site from outside AWS (ADR-016): liveness, readiness, pages and
+# an asset, using the same smoke test as a deploy. A failed scheduled run emails
+# the repository owner (GitHub's default for failed scheduled workflows).
+#
+# Runs only while the SITE_URL repository variable is set. Set it to the
+# deploy's SiteUrl while the site is up and clear it after `destroy`, or every
+# run would report the deliberately removed site as down.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: vars.SITE_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Smoke test the live site
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          SMOKE_ATTEMPTS: "3"
+          SMOKE_WAIT: "20"
+        run: bash scripts/smoke-test.sh "$SITE_URL"

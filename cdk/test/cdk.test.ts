@@ -60,7 +60,7 @@ describe('Feature: Lambda app stack (ADR-010)', () => {
       PackageType: 'Image',
       MemorySize: 512,
       Environment: {
-        Variables: { AWS_LWA_PORT: '4321', AWS_LWA_READINESS_CHECK_PATH: '/api/health' },
+        Variables: { AWS_LWA_PORT: '4321', AWS_LWA_READINESS_CHECK_PATH: '/api/ready' },
       },
     });
   });
@@ -195,6 +195,33 @@ describe('Feature: alarms, notifications and dashboard (ADR-015)', () => {
   it('given a deploy, outputs the dashboard link and the topic', () => {
     template.hasOutput('DashboardUrl', {});
     template.hasOutput('AlarmTopicArn', {});
+  });
+});
+
+describe('Feature: rollback drill (ADR-016)', () => {
+  const build = (rollbackDrill?: boolean) =>
+    Template.fromStack(
+      new AppLambdaStack(new cdk.App(), 'TestDrill', { env: { account: '111111111111', region: 'us-east-1' }, rollbackDrill }),
+    );
+  const variables = (template: Template) =>
+    (
+      Object.values(template.findResources('AWS::Lambda::Function'))[0] as {
+        Properties: { Environment: { Variables: Record<string, string> } };
+      }
+    ).Properties.Environment.Variables;
+
+  it('given a normal deploy, the release does not fail on purpose', () => {
+    expect(variables(build())).not.toHaveProperty('ROLLBACK_DRILL');
+    expect(variables(build(false))).not.toHaveProperty('ROLLBACK_DRILL');
+  });
+
+  it('given the drill, the release fails requests on purpose', () => {
+    expect(variables(build(true))).toMatchObject({ ROLLBACK_DRILL: 'fail-requests' });
+  });
+
+  it('given the drill, outputs what it needs to check the rollback', () => {
+    const template = build();
+    for (const name of ['FunctionName', 'DeployApplication', 'DeploymentGroupName']) template.hasOutput(name, {});
   });
 });
 
