@@ -1,6 +1,7 @@
 import type { PlayerId } from "../catan/events";
 import { AWARD_POINTS } from "../catan/awards";
 import {
+  BANK_TRADE_RATE,
   COSTS,
   emptyHand,
   type Hand,
@@ -310,4 +311,18 @@ export function devCardOptions(state: PlayState, player: PlayerId): DevCardOptio
     else if (playableCardIndex(state, player, card) < 0) reason = "bought-this-turn";
     return { card, held: count, allowed: reason === null, reason };
   });
+}
+
+// ------------------------------------------------------------ harbours
+
+/** Cards of `give` the player must hand the bank for one card: 4, 3 or 2 with harbours. */
+export function tradeRate(state: PlayState, player: PlayerId, give: Resource): number {
+  let rate = BANK_TRADE_RATE;
+  for (const harbour of state.harbours) {
+    const ends = TOPOLOGY.edges[harbour.edge]?.ends ?? [];
+    if (!ends.some((v) => state.buildings[v]?.player === player)) continue;
+    if (harbour.kind === give) rate = Math.min(rate, 2);
+    if (harbour.kind === "any") rate = Math.min(rate, 3);
+  }
+  return rate;
 }

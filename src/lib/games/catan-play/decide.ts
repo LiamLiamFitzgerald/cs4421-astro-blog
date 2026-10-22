@@ -1,6 +1,7 @@
 import { err, ok, type Result } from "../../core/result";
 import { generateBoard, isValidSeed } from "../catan/board";
 import { type DevCard, shuffledDeck } from "./dev-cards";
+import { dealHarbours } from "./harbours";
 import { decide as decideScoring } from "../catan/decide";
 import { initialState as initialScoringState } from "../catan/state";
 import type { PlayCommand } from "./commands";
@@ -13,9 +14,9 @@ import {
   isOpenCorner,
   piecesLeft,
   playableCardIndex,
+  tradeRate,
 } from "./queries";
 import {
-  BANK_TRADE_RATE,
   COSTS,
   DEV_CARD_COST,
   emptyHand,
@@ -104,6 +105,7 @@ function startGame(state: PlayState, command: Extract<PlayCommand, { type: "Star
       players: [...command.players],
       board: generateBoard(command.seed),
       deck: shuffledDeck(command.seed),
+      harbours: dealHarbours(command.seed),
     },
   ]);
 }
@@ -164,11 +166,10 @@ function buildCity(state: PlayState, player: string, vertex: number): Decision {
 function tradeWithBank(state: PlayState, player: string, give: string, get: string): Decision {
   if (!isResource(give) || !isResource(get)) return err({ code: "INVALID_TRADE", reason: "unknown-resource" });
   if (give === get) return err({ code: "INVALID_TRADE", reason: "same-resource" });
-  if ((state.hands[player]?.[give] ?? 0) < BANK_TRADE_RATE) {
-    return err({ code: "NOT_ENOUGH_TO_TRADE", give, needed: BANK_TRADE_RATE });
-  }
+  const rate = tradeRate(state, player, give);
+  if ((state.hands[player]?.[give] ?? 0) < rate) return err({ code: "NOT_ENOUGH_TO_TRADE", give, needed: rate });
   if (state.bank[get] < 1) return err({ code: "BANK_EMPTY", resource: get });
-  return ok([{ type: "BankTraded", player, give, get }]);
+  return ok([{ type: "BankTraded", player, give, get, rate }]);
 }
 
 function discardCards(state: PlayState, player: string, cards: Hand): Decision {

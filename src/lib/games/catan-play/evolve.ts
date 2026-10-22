@@ -48,6 +48,7 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
         deck: [...(event.deck ?? [])],
         devCards: Object.fromEntries(event.players.map((p) => [p, []])),
         knightsPlayed: Object.fromEntries(event.players.map((p) => [p, 0])),
+        harbours: [...(event.harbours ?? [])],
       };
     case "SetupSettlementPlaced":
       return withStartingResources(
@@ -192,7 +193,7 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
       };
     }
     case "BankTraded": {
-      const given = hand({ [event.give]: BANK_TRADE_RATE });
+      const given = hand({ [event.give]: event.rate ?? BANK_TRADE_RATE });
       const got = hand({ [event.get]: 1 });
       const held = state.hands[event.player] ?? emptyHand;
       return {

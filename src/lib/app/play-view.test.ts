@@ -8,6 +8,7 @@ import {
   describeEdge,
   describeHex,
   describeHand,
+  describeHarbour,
   describePlayEvent,
   describePlayViolation,
   describeRoll,
@@ -94,5 +95,8 @@ describe("Feature: words for the play mode", () => {
 
   it("offers only resources with at least four cards for trade", () => {
     expect(tradeableResources(hand({ wool: 4, ore: 3, grain: 7 }))).toEqual(["wool", "grain"]);
+    expect(tradeableResources(hand({ wool: 2, ore: 3 }), (r) => (r === "wool" ? 2 : 3))).toEqual(["wool", "ore"]);
+    expect(describeHarbour("any")).toBe("3:1 harbour");
+    expect(describeHarbour("ore")).toBe("2:1 ore harbour");
   });
 });

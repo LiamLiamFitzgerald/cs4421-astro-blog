@@ -9,6 +9,7 @@ import {
 	describeCorner,
 	describeEdge,
 	describeHand,
+	describeHarbour,
 	describeHex,
 	describePlayEvent,
 	describePlayViolation,
@@ -30,6 +31,7 @@ import {
 	devCardOptions,
 	hiddenPoints,
 	legalRoads,
+	tradeRate,
 	visiblePoints,
 	expectedStep,
 	legalRobberHexes,
@@ -41,6 +43,7 @@ import {
 } from '../lib/games/catan-play/queries';
 import { DEV_CARD_COST, emptyHand, handSize, missing, type Piece, RESOURCES, type Resource } from '../lib/games/catan-play/resources';
 import type { PlayState } from '../lib/games/catan-play/state';
+import { TOPOLOGY } from '../lib/games/catan-play/topology';
 import { WINNING_POINTS } from '../lib/games/catan/score';
 import { type BoardOverlay, renderBoard } from './board';
 import { el, type Feedback, required } from './feedback';
@@ -243,7 +246,8 @@ export function createPlayView(
 						onPick: (hex: string) => void run({ type: 'MoveRobber', player, hex }),
 					}
 				: undefined;
-		return { buildings, roads, targets, robber: state.robber, hexTargets };
+		const harbours = state.harbours.map((h) => ({ edge: h.edge, kind: h.kind, label: describeHarbour(h.kind) }));
+		return { buildings, roads, targets, robber: state.robber, hexTargets, harbours };
 	}
 
 	function boardInstruction(state: PlayState): string {
@@ -535,13 +539,15 @@ export function createPlayView(
 	function tradeForm(state: PlayState, player: string): HTMLElement {
 		const form = el('form', 'trade');
 		form.setAttribute('aria-label', 'Trade with the bank');
-		const offer = tradeableResources(state.hands[player] ?? emptyHand);
-		const legend = el('p', 'trade__title', 'Trade 4 for 1 with the bank');
+		const rate = (r: Resource) => tradeRate(state, player, r);
+		const offer = tradeableResources(state.hands[player] ?? emptyHand, rate);
+		const best = Math.min(...RESOURCES.map(rate));
+		const legend = el('p', 'trade__title', best < 4 ? 'Trade with the bank (your harbour rates)' : 'Trade 4 for 1 with the bank');
 		const give = el('select', 'input trade__select');
-		give.setAttribute('aria-label', 'Give 4');
+		give.setAttribute('aria-label', 'Give');
 		const get = el('select', 'input trade__select');
 		get.setAttribute('aria-label', 'Get 1');
-		for (const r of offer) give.append(new Option(`4 ${r}`, r));
+		for (const r of offer) give.append(new Option(`${rate(r)} ${r}`, r));
 		for (const r of RESOURCES) get.append(new Option(`1 ${r}`, r));
 		const firstOther = RESOURCES.find((r) => r !== offer[0]);
 		if (firstOther) get.value = firstOther;
@@ -549,7 +555,9 @@ export function createPlayView(
 		submit.type = 'submit';
 		form.append(legend);
 		if (offer.length === 0) {
-			form.append(el('p', 'hint', 'You need 4 of one resource to trade.'));
+			form.append(
+				el('p', 'hint', best < 4 ? `You need ${best} or more of one resource to trade.` : 'You need 4 of one resource to trade. Harbours lower the rate.'),
+			);
 			return form;
 		}
 		const row = el('div', 'trade__row');
@@ -657,6 +665,10 @@ export function createPlayView(
 		show('play');
 
 		renderBoard(board, state.board, boardList, overlay(state));
+		for (const h of state.harbours) {
+			const [a] = TOPOLOGY.edges[h.edge]?.ends ?? [0];
+			boardList.append(el('li', undefined, `${describeHarbour(h.kind)} by ${describeCorner(state.board, a)}`));
+		}
 		boardHint.textContent = boardInstruction(state);
 		turn.replaceChildren(...turnPanel(state));
 		roster.replaceChildren(...state.players.map((p) => playerRow(state, p)));

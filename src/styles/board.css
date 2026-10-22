@@ -215,3 +215,32 @@
 .board__target--hex:focus-visible {
 	fill: rgb(219 180 71 / 0.35);
 }
+
+/* Harbours: ivory signs off the coast; 2:1 signs take the colour of their resource's terrain. */
+.harbour__pier {
+	stroke: var(--color-sand);
+	stroke-width: 3;
+	stroke-linecap: round;
+}
+.harbour__sign {
+	fill: var(--color-token);
+	stroke: var(--color-sea-deep);
+	stroke-width: 1.5;
+}
+.harbour--lumber .harbour__sign { fill: var(--terrain-forest); }
+.harbour--brick .harbour__sign { fill: var(--terrain-hills); }
+.harbour--wool .harbour__sign { fill: var(--terrain-pasture); }
+.harbour--grain .harbour__sign { fill: var(--terrain-fields); }
+.harbour--ore .harbour__sign { fill: var(--terrain-mountains); }
+.harbour__rate {
+	font-family: var(--font-body);
+	font-size: 10px;
+	font-weight: 700;
+	text-anchor: middle;
+	fill: var(--color-ink);
+}
+.harbour--lumber .harbour__rate,
+.harbour--brick .harbour__rate,
+.harbour--ore .harbour__rate {
+	fill: #fff;
+}
