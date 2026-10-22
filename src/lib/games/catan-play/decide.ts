@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "../../core/result";
 import { generateBoard, isValidSeed } from "../catan/board";
+import { type DevCard, shuffledDeck } from "./dev-cards";
 import { decide as decideScoring } from "../catan/decide";
 import { initialState as initialScoringState } from "../catan/state";
 import type { PlayCommand } from "./commands";
@@ -11,8 +12,21 @@ import {
   expectedStep,
   isOpenCorner,
   piecesLeft,
+  playableCardIndex,
 } from "./queries";
-import { BANK_TRADE_RATE, COSTS, emptyHand, type Hand, handSize, isResource, missing, type Piece, RESOURCES } from "./resources";
+import {
+  BANK_TRADE_RATE,
+  COSTS,
+  DEV_CARD_COST,
+  emptyHand,
+  type Hand,
+  handSize,
+  isResource,
+  missing,
+  type Piece,
+  type Resource,
+  RESOURCES,
+} from "./resources";
 import type { PlayState, Step } from "./state";
 import { TOPOLOGY } from "./topology";
 import type { PlayViolation } from "./violations";
@@ -43,7 +57,8 @@ export function decide(state: PlayState, command: PlayCommand): Decision {
     case "EndTurn":
       return requireStep(state, "build-or-end") ?? ok([{ type: "TurnEnded", player: command.player }]);
     case "BuildRoad":
-      return requireStep(state, "build-or-end") ?? buildRoad(state, command.player, command.edge);
+      if (expectedStep(state) === "place-free-road") return buildRoad(state, command.player, command.edge, true);
+      return requireStep(state, "build-or-end") ?? buildRoad(state, command.player, command.edge, false);
     case "BuildSettlement":
       return requireStep(state, "build-or-end") ?? buildSettlement(state, command.player, command.vertex);
     case "BuildCity":
@@ -56,6 +71,21 @@ export function decide(state: PlayState, command: PlayCommand): Decision {
       return requireStep(state, "move-robber") ?? moveRobber(state, command.player, command.hex);
     case "StealFrom":
       return requireStep(state, "steal") ?? stealFrom(state, command.player, command.victim, command.pick);
+    case "BuyDevelopmentCard":
+      return requireStep(state, "build-or-end") ?? buyDevelopmentCard(state, command.player);
+    case "PlayKnight":
+      return canPlay(state, command.player, "knight") ?? ok([{ type: "KnightPlayed", player: command.player }]);
+    case "PlayRoadBuilding":
+      return canPlay(state, command.player, "road-building") ?? ok([{ type: "RoadBuildingPlayed", player: command.player }]);
+    case "PlayYearOfPlenty":
+      return canPlay(state, command.player, "year-of-plenty") ?? yearOfPlenty(state, command.player, command.resources);
+    case "PlayMonopoly":
+      return (
+        canPlay(state, command.player, "monopoly") ??
+        (isResource(command.resource)
+          ? ok([{ type: "MonopolyPlayed", player: command.player, resource: command.resource }])
+          : err({ code: "INVALID_TRADE", reason: "unknown-resource" }))
+      );
     default:
       return assertNever(command);
   }
@@ -68,7 +98,14 @@ function startGame(state: PlayState, command: Extract<PlayCommand, { type: "Star
   // From an empty game the only possible refusal is INVALID_PLAYERS.
   if (!players.ok) return err(players.error as Extract<PlayViolation, { code: "INVALID_PLAYERS" }>);
   if (!isValidSeed(command.seed)) return err({ code: "INVALID_SEED", seed: command.seed });
-  return ok([{ type: "GameStarted", players: [...command.players], board: generateBoard(command.seed) }]);
+  return ok([
+    {
+      type: "GameStarted",
+      players: [...command.players],
+      board: generateBoard(command.seed),
+      deck: shuffledDeck(command.seed),
+    },
+  ]);
 }
 
 function requireStep(state: PlayState, step: Step): Decision | null {
@@ -100,10 +137,12 @@ function payFor(state: PlayState, player: string, piece: Piece): Decision | null
   return handSize(short) > 0 ? err({ code: "CANNOT_AFFORD", piece, missing: short }) : null;
 }
 
-function buildRoad(state: PlayState, player: string, edge: number): Decision {
+function buildRoad(state: PlayState, player: string, edge: number, free: boolean): Decision {
   if (!TOPOLOGY.edges[edge]) return err({ code: "UNKNOWN_SPOT" });
   if (state.roads[edge] !== undefined) return err({ code: "SPOT_TAKEN" });
   if (!connectsToNetwork(state, player, edge)) return err({ code: "ROAD_NOT_CONNECTED" });
+  // Road Building only places roads that are left on the board, so no supply check is needed.
+  if (free) return ok([{ type: "RoadBuilt", player, edge, free: true }]);
   return payFor(state, player, "road") ?? ok([{ type: "RoadBuilt", player, edge }]);
 }
 
@@ -155,6 +194,37 @@ function stealFrom(state: PlayState, player: string, victim: string, pick: numbe
   const resource = Number.isInteger(pick) && pick >= 0 ? cardAt(state.hands[victim] ?? emptyHand, pick) : null;
   if (resource === null) return err({ code: "INVALID_PICK" });
   return ok([{ type: "CardStolen", player, victim, resource }]);
+}
+
+function buyDevelopmentCard(state: PlayState, player: string): Decision {
+  const card = state.deck[0];
+  if (card === undefined) return err({ code: "DECK_EMPTY" });
+  const short = missing(state.hands[player] ?? emptyHand, DEV_CARD_COST);
+  if (handSize(short) > 0) return err({ code: "CANNOT_AFFORD", piece: "development-card", missing: short });
+  return ok([{ type: "DevelopmentCardBought", player, card }]);
+}
+
+/**
+ * Development cards (not victory points) can be played before or after the
+ * roll, one per turn, and never on the turn they were bought.
+ */
+function canPlay(state: PlayState, player: string, card: DevCard): Decision | null {
+  const step = expectedStep(state);
+  if (step !== "roll" && step !== "build-or-end") return err({ code: "WRONG_STEP", expected: step ?? "roll" });
+  if (!(state.devCards[player] ?? []).some((c) => c.card === card)) return err({ code: "NO_SUCH_CARD", card });
+  if (state.playedDevCardThisTurn) return err({ code: "ALREADY_PLAYED_CARD" });
+  if (playableCardIndex(state, player, card) < 0) return err({ code: "CARD_TOO_NEW", card });
+  return null;
+}
+
+function yearOfPlenty(state: PlayState, player: string, resources: readonly [string, string]): Decision {
+  if (resources.length !== 2 || !resources.every(isResource)) return err({ code: "INVALID_TRADE", reason: "unknown-resource" });
+  const [a, b] = resources as readonly [Resource, Resource];
+  for (const r of [a, b]) {
+    const wanted = (a === r ? 1 : 0) + (b === r ? 1 : 0);
+    if (state.bank[r] < wanted) return err({ code: "BANK_EMPTY", resource: r });
+  }
+  return ok([{ type: "YearOfPlentyPlayed", player, resources: [a, b] }]);
 }
 
 const isDie = (n: number) => Number.isInteger(n) && n >= 1 && n <= 6;

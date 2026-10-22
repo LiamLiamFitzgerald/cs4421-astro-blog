@@ -14,6 +14,9 @@ import {
 	describePlayViolation,
 	describeRoll,
 	describeStep,
+	CARD_EFFECTS,
+	CARD_NAMES,
+	describeCardReason,
 	PIECE_NAMES,
 	tradeableResources,
 } from '../lib/app/play-view';
@@ -24,6 +27,10 @@ import {
 	actingPlayer,
 	buildOptions,
 	currentPlayer,
+	devCardOptions,
+	hiddenPoints,
+	legalRoads,
+	visiblePoints,
 	expectedStep,
 	legalRobberHexes,
 	legalSetupRoads,
@@ -32,7 +39,7 @@ import {
 	piecesLeft,
 	points,
 } from '../lib/games/catan-play/queries';
-import { emptyHand, handSize, type Piece, RESOURCES, type Resource } from '../lib/games/catan-play/resources';
+import { DEV_CARD_COST, emptyHand, handSize, missing, type Piece, RESOURCES, type Resource } from '../lib/games/catan-play/resources';
 import type { PlayState } from '../lib/games/catan-play/state';
 import { WINNING_POINTS } from '../lib/games/catan/score';
 import { type BoardOverlay, renderBoard } from './board';
@@ -174,7 +181,7 @@ export function createPlayView(
 		const next = actingPlayer(state);
 		const step = expectedStep(state);
 		if (state.winner) parts.push(`${state.winner} wins with ${points(state, state.winner)} points.`);
-		else if (next && (step === 'discard' || step === 'move-robber' || step === 'steal')) {
+		else if (next && (step === 'discard' || step === 'move-robber' || step === 'steal' || step === 'place-free-road')) {
 			parts.push(`${next}: ${describeStep(step)}`);
 		}
 		else if (next && step && added.some((e) => e.type === 'TurnEnded' || e.type === 'SetupRoadPlaced')) {
@@ -219,6 +226,8 @@ export function createPlayView(
 			targets = vertexTargets(legalSetupSettlements(state), 'Place a settlement', (vertex) => ({ type: 'PlaceSetupSettlement', player, vertex }));
 		} else if (step === 'place-road') {
 			targets = edgeTargets(legalSetupRoads(state), (edge) => ({ type: 'PlaceSetupRoad', player, edge }));
+		} else if (step === 'place-free-road') {
+			targets = edgeTargets(legalRoads(state, player), (edge) => ({ type: 'BuildRoad', player, edge }));
 		} else if (step === 'build-or-end' && mode) {
 			const option = buildOptions(state, player).find((o) => o.piece === mode);
 			const spots = option?.allowed ? [...option.spots] : [];
@@ -242,6 +251,10 @@ export function createPlayView(
 		if (step === 'place-settlement') return 'Choose a highlighted corner for the settlement.';
 		if (step === 'place-road') return 'Choose a highlighted edge for the road.';
 		if (step === 'move-robber') return 'Choose a highlighted hex for the robber. It cannot stay where it is.';
+		if (step === 'place-free-road' && state.pending?.kind === 'place-free-road') {
+			const n = state.pending.remaining;
+			return `Choose a highlighted edge for a free road (${n} left).`;
+		}
 		if (step === 'build-or-end' && mode) return `Choose where to build the ${PIECE_NAMES[mode]}. Select Build ${PIECE_NAMES[mode]} again (or press Escape) to cancel.`;
 		return '';
 	}
@@ -310,7 +323,8 @@ export function createPlayView(
 
 		if (step) parts.push(el('p', 'turn__step', describeStep(step)));
 
-		if (state.lastRoll && state.phase !== 'setup') {
+		// Show this turn's roll; before rolling, the previous player's dice would only confuse.
+		if (state.lastRoll && state.phase !== 'setup' && step !== 'roll') {
 			const roll = el('div', `roll${rolledJustNow ? ' roll--new' : ''}`);
 			const dice = el('div', 'roll__dice');
 			dice.append(die(state.lastRoll.dice[0]), die(state.lastRoll.dice[1]));
@@ -379,13 +393,88 @@ export function createPlayView(
 				});
 				builds.append(b);
 			}
+			builds.append(buyCardButton(state, player));
 			actions.append(builds, tradeForm(state, player));
 			const end = button('End turn', null, 'button button--primary turn__end');
 			end.addEventListener('click', () => void run({ type: 'EndTurn', player }));
 			actions.append(end);
 		}
+		if (step === 'roll' || step === 'build-or-end') {
+			const hand = devCardPanel(state, player);
+			if (hand) actions.append(hand);
+		}
 		parts.push(actions);
 		return parts;
+	}
+
+	function buyCardButton(state: PlayState, player: string): HTMLButtonElement {
+		const b = el('button', 'button build');
+		b.type = 'button';
+		const label = el('span', 'build__label');
+		label.append(iconElement('card'), document.createTextNode('Buy card'));
+		const short = missing(state.hands[player] ?? emptyHand, DEV_CARD_COST);
+		const reason =
+			state.deck.length === 0
+				? 'No cards left'
+				: handSize(short) > 0
+					? `Needs ${describeHand(short)}`
+					: `${state.deck.length} left`;
+		const note = el('span', 'build__note', reason);
+		note.id = 'build-note-card';
+		b.setAttribute('aria-describedby', note.id);
+		b.append(label, costList(DEV_CARD_COST), note);
+		b.disabled = state.deck.length === 0 || handSize(short) > 0;
+		b.addEventListener('click', () => void run({ type: 'BuyDevelopmentCard', player }));
+		return b;
+	}
+
+	/** The current player's development cards, each with Play (or why it cannot be played). */
+	function devCardPanel(state: PlayState, player: string): HTMLElement | null {
+		const options = devCardOptions(state, player);
+		if (options.length === 0) return null;
+		const section = el('section', 'cards');
+		section.setAttribute('aria-label', `${player}'s development cards`);
+		section.append(el('p', 'trade__title', 'Development cards'));
+		for (const option of options) {
+			const row = el('div', 'card-row');
+			const name = el('div', 'card-row__name');
+			name.append(iconElement(option.card === 'knight' ? 'knight' : 'card'), document.createTextNode(`${CARD_NAMES[option.card]}${option.held > 1 ? ` ×${option.held}` : ''}`));
+			const text = el('p', 'card-row__text', CARD_EFFECTS[option.card]);
+			const controls = el('div', 'card-row__controls');
+			const choose = (labelText: string) => {
+				const select = el('select', 'input trade__select');
+				select.setAttribute('aria-label', labelText);
+				for (const r of RESOURCES) select.append(new Option(r, r));
+				return select;
+			};
+			let command: () => PlayCommand | null = () => null;
+			if (option.card === 'knight') command = () => ({ type: 'PlayKnight', player });
+			if (option.card === 'road-building') command = () => ({ type: 'PlayRoadBuilding', player });
+			if (option.card === 'year-of-plenty') {
+				const a = choose('First resource');
+				const b = choose('Second resource');
+				controls.append(a, b);
+				command = () => ({ type: 'PlayYearOfPlenty', player, resources: [a.value as Resource, b.value as Resource] });
+			}
+			if (option.card === 'monopoly') {
+				const r = choose('Resource to take');
+				controls.append(r);
+				command = () => ({ type: 'PlayMonopoly', player, resource: r.value as Resource });
+			}
+			if (option.card !== 'victory-point') {
+				const play = button(`Play ${CARD_NAMES[option.card].toLowerCase()}`, null, 'button button--small');
+				play.disabled = !option.allowed;
+				play.addEventListener('click', () => {
+					const c = command();
+					if (c) void run(c);
+				});
+				controls.append(play);
+			}
+			row.append(name, text, controls);
+			if (!option.allowed) row.append(el('p', 'build__note', describeCardReason(option.reason)));
+			section.append(row);
+		}
+		return section;
 	}
 
 	/** Steppers for choosing which cards to discard after a 7. */
@@ -487,17 +576,20 @@ export function createPlayView(
 		const badge = el('span', `seat seat--${seat}`, String(seat));
 		badge.setAttribute('aria-hidden', 'true');
 		const score = el('p', 'player__score');
-		const vp = points(state, player);
-		score.append(el('strong', 'numeric', String(vp)), el('span', undefined, ` of ${WINNING_POINTS} points`));
+		// Others see only visible points; the player whose input is needed also sees their hidden ones.
+		const vp = visiblePoints(state, player);
+		const hidden = isCurrent || state.winner === player ? hiddenPoints(state, player) : 0;
+		score.append(el('strong', 'numeric', String(vp + hidden)), el('span', undefined, ` of ${WINNING_POINTS} points`));
+		if (hidden > 0) score.append(el('span', 'player__hidden', ` (${hidden} from hidden cards)`));
 		head.append(badge, el('h3', 'player__name', player), score);
 
 		const meter = el('div', 'meter');
 		meter.setAttribute('role', 'meter');
 		meter.setAttribute('aria-valuemin', '0');
 		meter.setAttribute('aria-valuemax', String(WINNING_POINTS));
-		meter.setAttribute('aria-valuenow', String(Math.min(vp, WINNING_POINTS)));
+		meter.setAttribute('aria-valuenow', String(Math.min(vp + hidden, WINNING_POINTS)));
 		meter.setAttribute('aria-label', `${player}'s progress to ${WINNING_POINTS} points`);
-		for (let i = 0; i < WINNING_POINTS; i++) meter.append(el('span', i < vp ? 'meter__step meter__step--on' : 'meter__step'));
+		for (let i = 0; i < WINNING_POINTS; i++) meter.append(el('span', i < vp + hidden ? 'meter__step meter__step--on' : 'meter__step'));
 
 		const hand = state.hands[player] ?? emptyHand;
 		const cards = el('dl', 'hand');
@@ -539,6 +631,18 @@ export function createPlayView(
 			a.append(iconElement('trophy'), document.createTextNode(`Longest Road (${longestRoadLength(state, player)})`));
 			awards.append(a);
 		}
+		if (state.largestArmy === player) {
+			const a = el('li', 'award');
+			a.append(iconElement('army'), document.createTextNode(`Largest Army (${state.knightsPlayed[player] ?? 0})`));
+			awards.append(a);
+		}
+		const cardCount = (state.devCards[player] ?? []).length;
+		const knights = state.knightsPlayed[player] ?? 0;
+		const extras = el('span', 'supply__item');
+		extras.append(iconElement('card'), document.createTextNode(`${cardCount} card${cardCount === 1 ? '' : 's'}`));
+		const army = el('span', 'supply__item');
+		army.append(iconElement('knight'), document.createTextNode(`${knights} knight${knights === 1 ? '' : 's'} played`));
+		supply.append(extras, army);
 
 		row.append(head, meter, awards, cards, supply);
 		return row;

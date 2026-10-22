@@ -2,8 +2,30 @@ import type { PlayerId } from "../catan/events";
 import type { PlayEvent } from "./events";
 import { LONGEST_ROAD_THRESHOLD, resolveExclusiveAward } from "../catan/awards";
 import { WINNING_POINTS } from "../catan/score";
-import { discardsOwed, longestRoadLength, points, production, robberVictims, snakeOrder } from "./queries";
-import { addHands, BANK_TRADE_RATE, COSTS, emptyHand, type Hand, hand, PRODUCES, type Resource, subtractHands } from "./resources";
+import {
+  discardsOwed,
+  legalRoads,
+  longestRoadLength,
+  piecesLeft,
+  playableCardIndex,
+  points,
+  production,
+  robberVictims,
+  snakeOrder,
+} from "./queries";
+import { type DevCard, LARGEST_ARMY_KNIGHTS } from "./dev-cards";
+import {
+  addHands,
+  BANK_TRADE_RATE,
+  COSTS,
+  DEV_CARD_COST,
+  emptyHand,
+  type Hand,
+  hand,
+  PRODUCES,
+  type Resource,
+  subtractHands,
+} from "./resources";
 import { initialPlayState, type PlayState } from "./state";
 import { TOPOLOGY, type VertexId } from "./topology";
 
@@ -23,6 +45,9 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
         players: [...event.players],
         hands: Object.fromEntries(event.players.map((p) => [p, emptyHand])),
         robber: desertKey(event.board),
+        deck: [...(event.deck ?? [])],
+        devCards: Object.fromEntries(event.players.map((p) => [p, []])),
+        knightsPlayed: Object.fromEntries(event.players.map((p) => [p, 0])),
       };
     case "SetupSettlementPlaced":
       return withStartingResources(
@@ -43,12 +68,79 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
     case "DiceRolled":
       return applyRoll(state, event.player, event.dice);
     case "TurnEnded":
-      return { ...state, phase: "roll", current: (state.current + 1) % state.players.length };
-    case "RoadBuilt":
+      return {
+        ...state,
+        phase: "roll",
+        current: (state.current + 1) % state.players.length,
+        turn: state.turn + 1,
+        playedDevCardThisTurn: false,
+      };
+    case "RoadBuilt": {
+      const placed = { ...state, roads: { ...state.roads, [event.edge]: event.player } };
+      if (!event.free) return afterBuild(pay(placed, event.player, COSTS.road), event.player);
+      return afterBuild(nextFreeRoad(placed, event.player), event.player);
+    }
+    case "DevelopmentCardBought":
       return afterBuild(
-        pay({ ...state, roads: { ...state.roads, [event.edge]: event.player } }, event.player, COSTS.road),
+        pay(
+          {
+            ...state,
+            deck: state.deck.slice(1),
+            devCards: {
+              ...state.devCards,
+              [event.player]: [...(state.devCards[event.player] ?? []), { card: event.card, boughtOnTurn: state.turn }],
+            },
+          },
+          event.player,
+          DEV_CARD_COST,
+        ),
         event.player,
       );
+    case "KnightPlayed": {
+      const played = useCard(state, event.player, "knight");
+      const knightsPlayed = { ...played.knightsPlayed, [event.player]: (played.knightsPlayed[event.player] ?? 0) + 1 };
+      const largestArmy = resolveExclusiveAward({
+        incumbent: played.largestArmy,
+        counts: knightsPlayed,
+        threshold: LARGEST_ARMY_KNIGHTS,
+      });
+      return afterBuild(
+        { ...played, knightsPlayed, largestArmy, pending: { kind: "move-robber", resume: resumePoint(state) } },
+        event.player,
+      );
+    }
+    case "RoadBuildingPlayed": {
+      const played = useCard(state, event.player, "road-building");
+      const remaining = Math.min(2, piecesLeft(played, event.player).road);
+      const canPlace = remaining > 0 && legalRoads(played, event.player).length > 0;
+      return {
+        ...played,
+        pending: canPlace ? { kind: "place-free-road", remaining, resume: resumePoint(state) } : null,
+      };
+    }
+    case "YearOfPlentyPlayed": {
+      const played = useCard(state, event.player, "year-of-plenty");
+      const gained = event.resources.reduce((h, r) => addHands(h, hand({ [r]: 1 })), emptyHand);
+      return {
+        ...played,
+        hands: { ...played.hands, [event.player]: addHands(played.hands[event.player] ?? emptyHand, gained) },
+        bank: subtractHands(played.bank, gained),
+      };
+    }
+    case "MonopolyPlayed": {
+      const played = useCard(state, event.player, "monopoly");
+      let taken = 0;
+      const hands = Object.fromEntries(
+        played.players.map((p) => {
+          const held = played.hands[p] ?? emptyHand;
+          if (p === event.player) return [p, held];
+          taken += held[event.resource];
+          return [p, { ...held, [event.resource]: 0 }];
+        }),
+      );
+      const mine = hands[event.player] ?? emptyHand;
+      return { ...played, hands: { ...hands, [event.player]: { ...mine, [event.resource]: mine[event.resource] + taken } } };
+    }
     case "SettlementBuilt":
       return afterBuild(
         pay(
@@ -165,6 +257,27 @@ function applyRoll(state: PlayState, player: PlayerId, dice: readonly [number, n
         ? { kind: "discard", owed, resume: "build-or-end" }
         : { kind: "move-robber", resume: "build-or-end" },
   };
+}
+
+/** Where play returns after a card's effect: before the roll, or to building. */
+function resumePoint(state: PlayState): "roll" | "build-or-end" {
+  return state.phase === "roll" ? "roll" : "build-or-end";
+}
+
+/** Removes the first playable card of this kind and marks a card as played this turn. */
+function useCard(state: PlayState, player: PlayerId, card: DevCard): PlayState {
+  const index = playableCardIndex(state, player, card);
+  const held = [...(state.devCards[player] ?? [])];
+  if (index >= 0) held.splice(index, 1);
+  return { ...state, devCards: { ...state.devCards, [player]: held }, playedDevCardThisTurn: true };
+}
+
+/** After a free road: one fewer to place, and stop early if there is nowhere left to build. */
+function nextFreeRoad(state: PlayState, player: PlayerId): PlayState {
+  if (state.pending?.kind !== "place-free-road") return state;
+  const remaining = state.pending.remaining - 1;
+  const canPlace = remaining > 0 && piecesLeft(state, player).road > 0 && legalRoads(state, player).length > 0;
+  return { ...state, pending: canPlace ? { ...state.pending, remaining } : null };
 }
 
 /** Moves a cost from the player's hand back to the bank. */

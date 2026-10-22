@@ -61,3 +61,6 @@ export const BANK_TRADE_RATE = 4;
 export function isResource(value: string): value is Resource {
   return (RESOURCES as readonly string[]).includes(value);
 }
+
+/** Cost of one development card. */
+export const DEV_CARD_COST: Hand = { ...emptyHand, wool: 1, grain: 1, ore: 1 };

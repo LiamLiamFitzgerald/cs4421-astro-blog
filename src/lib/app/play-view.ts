@@ -3,13 +3,52 @@ import type { Board } from "../games/catan/board";
 import type { PlayerId } from "../games/catan/events";
 import type { PlayEvent } from "../games/catan-play/events";
 import { BANK_TRADE_RATE, type Hand, type Piece, RESOURCES, type Resource } from "../games/catan-play/resources";
+import type { DevCard } from "../games/catan-play/dev-cards";
+import type { DevCardOption } from "../games/catan-play/queries";
 import type { PlayState, Roll, Step } from "../games/catan-play/state";
 import { TOPOLOGY } from "../games/catan-play/topology";
 import type { PlayViolation } from "../games/catan-play/violations";
 
 /** Words for the play mode, in one place so the UI and its tests agree. */
 
-export const PIECE_NAMES: Readonly<Record<Piece, string>> = { road: "road", settlement: "settlement", city: "city" };
+export const PIECE_NAMES: Readonly<Record<Piece | "development-card", string>> = {
+  road: "road",
+  settlement: "settlement",
+  city: "city",
+  "development-card": "development card",
+};
+
+export const CARD_NAMES: Readonly<Record<DevCard, string>> = {
+  knight: "Knight",
+  "victory-point": "Victory point",
+  "road-building": "Road building",
+  "year-of-plenty": "Year of plenty",
+  monopoly: "Monopoly",
+};
+
+/** What each card does, in one line, for buttons and tooltips. */
+export const CARD_EFFECTS: Readonly<Record<DevCard, string>> = {
+  knight: "Move the robber and steal a card. Three or more knights can win Largest Army.",
+  "victory-point": "Worth 1 point, counted automatically. Kept hidden until you win.",
+  "road-building": "Place 2 roads for free.",
+  "year-of-plenty": "Take any 2 resources from the bank.",
+  monopoly: "Name a resource: every other player gives you all of theirs.",
+};
+
+export function describeCardReason(reason: DevCardOption["reason"]): string {
+  switch (reason) {
+    case "victory-points-are-automatic":
+      return "Counted automatically";
+    case "bought-this-turn":
+      return "Bought this turn: play it from your next turn";
+    case "one-per-turn":
+      return "You have already played a card this turn";
+    case "not-now":
+      return "Play it on your turn, before rolling or while building";
+    case null:
+      return "";
+  }
+}
 
 /** "1 lumber and 2 grain"; "nothing" when empty. */
 export function describeHand(h: Hand): string {
@@ -35,6 +74,8 @@ export function describeStep(step: Step): string {
       return "Move the robber: choose a highlighted hex.";
     case "steal":
       return "Choose a player to steal a card from.";
+    case "place-free-road":
+      return "Place a free road from Road Building.";
   }
 }
 
@@ -92,6 +133,14 @@ export function describePlayViolation(v: PlayViolation): string {
       return v.victims.length > 0 ? `Steal from ${v.victims.join(" or ")}.` : "There is nobody to steal from.";
     case "INVALID_PICK":
       return "That card cannot be stolen.";
+    case "DECK_EMPTY":
+      return "There are no development cards left.";
+    case "NO_SUCH_CARD":
+      return `You do not have a ${CARD_NAMES[v.card].toLowerCase()} card.`;
+    case "CARD_TOO_NEW":
+      return `You bought that ${CARD_NAMES[v.card].toLowerCase()} card this turn; play it from your next turn.`;
+    case "ALREADY_PLAYED_CARD":
+      return "You can play only one development card per turn.";
   }
 }
 
@@ -149,6 +198,17 @@ export function describePlayEvent(event: PlayEvent, state: PlayState): string {
     case "CardStolen":
       // Which card was taken is private between the two players.
       return `${event.player} stole a card from ${event.victim}`;
+    case "DevelopmentCardBought":
+      // The card stays hidden from the other players.
+      return `${event.player} bought a development card`;
+    case "KnightPlayed":
+      return `${event.player} played a knight`;
+    case "RoadBuildingPlayed":
+      return `${event.player} played Road building`;
+    case "YearOfPlentyPlayed":
+      return `${event.player} played Year of plenty for ${event.resources[0]} and ${event.resources[1]}`;
+    case "MonopolyPlayed":
+      return `${event.player} played Monopoly on ${event.resource}`;
   }
 }
 
