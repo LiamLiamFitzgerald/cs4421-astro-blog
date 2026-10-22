@@ -87,6 +87,15 @@ export function decide(state: PlayState, command: PlayCommand): Decision {
           ? ok([{ type: "MonopolyPlayed", player: command.player, resource: command.resource }])
           : err({ code: "INVALID_TRADE", reason: "unknown-resource" }))
       );
+    case "ProposeTrade":
+      return requireStep(state, "build-or-end") ?? proposeTrade(state, command.player, command.to, command.give, command.get);
+    case "AcceptTrade":
+      return requireStep(state, "respond-trade") ?? acceptTrade(state, command.player);
+    case "DeclineTrade":
+      return (
+        requireStep(state, "respond-trade") ??
+        ok([{ type: "TradeDeclined", player: command.player, from: state.pending?.kind === "respond-trade" ? state.pending.from : "" }])
+      );
     default:
       return assertNever(command);
   }
@@ -226,6 +235,37 @@ function yearOfPlenty(state: PlayState, player: string, resources: readonly [str
     if (state.bank[r] < wanted) return err({ code: "BANK_EMPTY", resource: r });
   }
   return ok([{ type: "YearOfPlentyPlayed", player, resources: [a, b] }]);
+}
+
+/** Normalises an offered hand; null when a count is negative or not a whole number. */
+function offeredHand(h: Partial<Record<Resource, number>>): Hand | null {
+  const counts = RESOURCES.map((r) => h[r] ?? 0);
+  if (counts.some((n) => !Number.isInteger(n) || n < 0)) return null;
+  return Object.fromEntries(RESOURCES.map((r, i) => [r, counts[i] ?? 0])) as Hand;
+}
+
+function proposeTrade(state: PlayState, player: string, to: string, give: Hand, get: Hand): Decision {
+  if (!state.players.includes(to)) return err({ code: "INVALID_OFFER", reason: "unknown-player" });
+  if (to === player) return err({ code: "INVALID_OFFER", reason: "yourself" });
+  const g = offeredHand(give);
+  const w = offeredHand(get);
+  if (!g || !w) return err({ code: "INVALID_OFFER", reason: "not-whole-numbers" });
+  // A trade swaps cards both ways; gifts are not allowed in the base rules.
+  if (handSize(g) === 0 || handSize(w) === 0) return err({ code: "INVALID_OFFER", reason: "empty-side" });
+  const held = state.hands[player] ?? emptyHand;
+  if (RESOURCES.some((r) => g[r] > held[r])) return err({ code: "NOT_IN_HAND" });
+  return ok([{ type: "TradeProposed", player, to, give: g, get: w }]);
+}
+
+function acceptTrade(state: PlayState, player: string): Decision {
+  if (state.pending?.kind !== "respond-trade") return err({ code: "WRONG_STEP", expected: expectedStep(state) ?? "roll" });
+  const { from, give, get } = state.pending;
+  const short = missing(state.hands[player] ?? emptyHand, get);
+  if (handSize(short) > 0) return err({ code: "RECIPIENT_LACKS_CARDS", missing: short });
+  // Nothing else can happen while the offer waits, so the offerer still holds
+  // their side; the check guards against a hand-edited stored log.
+  if (handSize(missing(state.hands[from] ?? emptyHand, give)) > 0) return err({ code: "NOT_IN_HAND" });
+  return ok([{ type: "TradeAccepted", player, from, give, get }]);
 }
 
 const isDie = (n: number) => Number.isInteger(n) && n >= 1 && n <= 6;

@@ -25,4 +25,8 @@ export type PlayCommand =
   | { readonly type: "PlayKnight"; readonly player: PlayerId }
   | { readonly type: "PlayRoadBuilding"; readonly player: PlayerId }
   | { readonly type: "PlayYearOfPlenty"; readonly player: PlayerId; readonly resources: readonly [Resource, Resource] }
-  | { readonly type: "PlayMonopoly"; readonly player: PlayerId; readonly resource: Resource };
+  | { readonly type: "PlayMonopoly"; readonly player: PlayerId; readonly resource: Resource }
+  /** Offer `give` (from the player) for `get` (from `to`). */
+  | { readonly type: "ProposeTrade"; readonly player: PlayerId; readonly to: PlayerId; readonly give: Hand; readonly get: Hand }
+  | { readonly type: "AcceptTrade"; readonly player: PlayerId }
+  | { readonly type: "DeclineTrade"; readonly player: PlayerId };

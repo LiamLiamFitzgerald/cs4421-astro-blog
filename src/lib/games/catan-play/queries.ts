@@ -47,6 +47,7 @@ export function expectedStep(state: PlayState): Step | null {
  */
 export function actingPlayer(state: PlayState): PlayerId | null {
   const pending = state.pending;
+  if (pending?.kind === "respond-trade") return pending.to;
   if (pending?.kind !== "discard") return currentPlayer(state);
   const n = state.players.length;
   for (let i = 0; i < n; i++) {

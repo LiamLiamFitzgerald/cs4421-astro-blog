@@ -16,7 +16,8 @@ export type Step =
   | "discard"
   | "move-robber"
   | "steal"
-  | "place-free-road";
+  | "place-free-road"
+  | "respond-trade";
 
 /** Where play returns once the robber has been dealt with. */
 export type Resume = "roll" | "build-or-end";
@@ -32,7 +33,16 @@ export type Pending =
   /** The robber has moved; the mover picks one of these players to steal from. */
   | { readonly kind: "steal"; readonly victims: readonly PlayerId[]; readonly resume: Resume }
   /** Road Building: place this many more roads for free. */
-  | { readonly kind: "place-free-road"; readonly remaining: number; readonly resume: Resume };
+  | { readonly kind: "place-free-road"; readonly remaining: number; readonly resume: Resume }
+  /** A trade offer waiting for `to` to accept or decline. */
+  | {
+      readonly kind: "respond-trade";
+      readonly from: PlayerId;
+      readonly to: PlayerId;
+      readonly give: Hand;
+      readonly get: Hand;
+      readonly resume: Resume;
+    };
 
 export interface Building {
   readonly player: PlayerId;

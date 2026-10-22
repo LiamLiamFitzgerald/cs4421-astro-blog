@@ -192,6 +192,26 @@ export function evolve(state: PlayState, event: PlayEvent): PlayState {
         pending: null,
       };
     }
+    case "TradeProposed":
+      return {
+        ...state,
+        pending: { kind: "respond-trade", from: event.player, to: event.to, give: event.give, get: event.get, resume: "build-or-end" },
+      };
+    case "TradeAccepted": {
+      const from = state.hands[event.from] ?? emptyHand;
+      const to = state.hands[event.player] ?? emptyHand;
+      return {
+        ...state,
+        hands: {
+          ...state.hands,
+          [event.from]: addHands(subtractHands(from, event.give), event.get),
+          [event.player]: addHands(subtractHands(to, event.get), event.give),
+        },
+        pending: null,
+      };
+    }
+    case "TradeDeclined":
+      return { ...state, pending: null };
     case "BankTraded": {
       const given = hand({ [event.give]: event.rate ?? BANK_TRADE_RATE });
       const got = hand({ [event.get]: 1 });

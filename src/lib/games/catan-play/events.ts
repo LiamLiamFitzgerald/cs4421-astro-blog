@@ -35,4 +35,14 @@ export type PlayEvent =
   | { readonly type: "KnightPlayed"; readonly player: PlayerId }
   | { readonly type: "RoadBuildingPlayed"; readonly player: PlayerId }
   | { readonly type: "YearOfPlentyPlayed"; readonly player: PlayerId; readonly resources: readonly [Resource, Resource] }
-  | { readonly type: "MonopolyPlayed"; readonly player: PlayerId; readonly resource: Resource };
+  | { readonly type: "MonopolyPlayed"; readonly player: PlayerId; readonly resource: Resource }
+  | { readonly type: "TradeProposed"; readonly player: PlayerId; readonly to: PlayerId; readonly give: Hand; readonly get: Hand }
+  /** `player` is the one accepting; the terms are repeated so the event stands on its own. */
+  | {
+      readonly type: "TradeAccepted";
+      readonly player: PlayerId;
+      readonly from: PlayerId;
+      readonly give: Hand;
+      readonly get: Hand;
+    }
+  | { readonly type: "TradeDeclined"; readonly player: PlayerId; readonly from: PlayerId };
