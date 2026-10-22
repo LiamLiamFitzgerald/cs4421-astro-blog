@@ -65,6 +65,10 @@ jobs:
         if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'
         run: npx cdk deploy AppLambdaStack --require-approval never --outputs-file outputs.json
         working-directory: cdk
+        env:
+          # ADR-015: where alarm emails go. A repository variable, not a secret
+          # and not committed. Leave it unset to deploy without email alerts.
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
 
       - name: Smoke test /api/health
         if: env.ACTION == 'deploy' || env.ACTION == 'rehearse'

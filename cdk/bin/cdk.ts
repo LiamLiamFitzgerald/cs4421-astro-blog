@@ -40,4 +40,6 @@ if (fs.existsSync(path.join(__dirname, '..', '..', 'dist'))) {
 // ADR-010: the same image on Lambda, with canary deploys and automatic rollback.
 new AppLambdaStack(app, 'AppLambdaStack', {
   env: { account: '480174683659', region: 'us-east-1' },
+  // ADR-015: alarm email from the environment (a GitHub variable), never committed.
+  alarmEmail: process.env.ALARM_EMAIL || undefined,
 });
