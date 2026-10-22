@@ -1,6 +1,6 @@
 # ADR-007: One design system for every page, with the board as the only colourful element
 
-- **Status:** Proposed (2026-10-20)
+- **Status:** Proposed (2026-10-20); colour roles and component changes refined by ADR-009
 - **Deciders:** Liam Fitzgerald
 
 ## Context

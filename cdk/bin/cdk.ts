@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
 import { StaticSiteStack } from '../lib/static-site-stack';
-import { AppServiceStack } from '../lib/app-service-stack';
+// import { AppServiceStack } from '../lib/app-service-stack';
+import { AppLambdaStack } from '../lib/app-lambda-stack';
 
 const app = new cdk.App();
 new StaticSiteStack(app, 'StaticSiteStack', {
@@ -20,7 +21,14 @@ new StaticSiteStack(app, 'StaticSiteStack', {
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
 
-// ADR-001: container service. Deployed alongside the static stack until verified.
-new AppServiceStack(app, 'AppServiceStack', {
+// ADR-001 (superseded by ADR-010): the ECS Fargate service. Commented out
+// because its load balancer and always-on task cost about $1.40/day. The code
+// in lib/app-service-stack.ts is kept, and still tested, so it can come back.
+// new AppServiceStack(app, 'AppServiceStack', {
+//   env: { account: '480174683659', region: 'us-east-1' },
+// });
+
+// ADR-010: the same image on Lambda, with canary deploys and automatic rollback.
+new AppLambdaStack(app, 'AppLambdaStack', {
   env: { account: '480174683659', region: 'us-east-1' },
 });

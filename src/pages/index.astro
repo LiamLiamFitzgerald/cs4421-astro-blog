@@ -27,9 +27,9 @@ const practices = [
 	},
 	{
 		title: 'Shipped as a container',
-		body: 'A server-rendered app with a health check and JSON logs, defined as infrastructure code for AWS Fargate.',
-		href: adr('ADR-001-transition-to-ssr-and-containers'),
-		ref: 'ADR-001',
+		body: 'One Docker image with a health check and JSON logs, run on AWS Lambda with canary deploys and automatic rollback.',
+		href: adr('ADR-010-move-hosting-to-lambda'),
+		ref: 'ADR-010',
 	},
 	{
 		title: 'Released from history',
@@ -49,11 +49,10 @@ const practices = [
 <Layout>
 	<section class="hero" aria-labelledby="hero-title">
 		<div class="hero__text">
-			<h1 id="hero-title">Deal a fair board, then keep score.</h1>
+			<h1 id="hero-title">Deal a fair board, then play.</h1>
 			<p class="hero__lede">
-				Every board follows the base-game rules, with no 6 or 8 side by side. Record settlements,
-				cities, knights and roads as you play, and the scoreboard works out the awards and the
-				winner.
+				Every board follows the base-game rules, with no 6 or 8 side by side. Play the whole game
+				on one device, passing it round the table, or keep score of a game on a real board.
 			</p>
 			<div class="hero__actions">
 				<a class="button button--primary" href="/catan" id="start-link">
@@ -79,8 +78,8 @@ const practices = [
 	<section class="practices" aria-labelledby="practices-title">
 		<h2 id="practices-title">How it is built</h2>
 		<p class="muted">
-			The scoreboard is small on purpose. The project is the engineering around it, so that it can
-			be maintained and extended safely.
+			The game is small on purpose. The project is the engineering around it, so that it can be
+			maintained and extended safely.
 		</p>
 		<dl class="practices__list">
 			{
@@ -155,7 +154,6 @@ const practices = [
 	.hero__board .board {
 		max-width: 34rem;
 		margin: 0 auto;
-		filter: drop-shadow(0 10px 18px rgb(43 36 25 / 0.18));
 	}
 	.hero__board figcaption {
 		text-align: center;

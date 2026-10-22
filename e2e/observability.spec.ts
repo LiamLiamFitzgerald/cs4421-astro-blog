@@ -40,7 +40,7 @@ test.describe("Feature: pages that do not exist", () => {
 
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("heading", { name: "This page is not on the map" })).toBeVisible();
-    await page.getByRole("link", { name: "Go to the scoreboard" }).click();
+    await page.getByRole("link", { name: "Play a game" }).click();
     await expect(page).toHaveURL(/\/catan/);
   });
 });

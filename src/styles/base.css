@@ -105,7 +105,11 @@ code {
 	color: var(--color-ink-muted);
 }
 
-/* Buttons: one primary action per screen, secondary for everything else. */
+/*
+ * Buttons. Primary (forest) for the one main action on a screen, secondary
+ * (ivory) for everything else, destructive (brick red) for actions that
+ * discard something. Disabled buttons keep legible text instead of fading.
+ */
 .button {
 	display: inline-flex;
 	align-items: center;
@@ -119,17 +123,19 @@ code {
 	background: var(--color-surface);
 	border: 1px solid var(--color-line-strong);
 	border-radius: var(--radius-s);
-	box-shadow: var(--shadow-1);
+	/* A hairline at the bottom edge makes buttons read as pressable pieces. */
+	box-shadow: inset 0 -1px 0 rgb(45 42 36 / 0.08), var(--shadow-1);
 	cursor: pointer;
 	transition:
 		background-color var(--duration-fast) var(--ease-out),
 		border-color var(--duration-fast) var(--ease-out),
+		box-shadow var(--duration-fast) var(--ease-out),
 		transform var(--duration-fast) var(--ease-out);
 }
 .button:hover {
 	color: var(--color-ink);
-	background: #fffdf7;
-	border-color: var(--color-forest);
+	background: var(--color-surface-raised);
+	border-color: var(--color-slate);
 	text-decoration: none;
 }
 .button:active {
@@ -137,9 +143,13 @@ code {
 	box-shadow: none;
 }
 .button:disabled,
-.button[aria-disabled='true'] {
+.button[aria-disabled='true'],
+.button:disabled:hover {
 	cursor: not-allowed;
-	opacity: 0.5;
+	color: var(--color-ink-disabled);
+	background: var(--color-surface-sunk);
+	border-color: var(--color-line);
+	border-style: dashed;
 	transform: none;
 	box-shadow: none;
 }
@@ -150,13 +160,25 @@ code {
 }
 .button--primary {
 	color: var(--color-ink-inverse);
-	background: var(--color-terracotta);
-	border-color: var(--color-terracotta-strong);
+	background: var(--color-forest);
+	border-color: var(--color-forest-strong);
+	box-shadow: inset 0 -2px 0 var(--color-forest-strong), var(--shadow-1);
 }
 .button--primary:hover {
 	color: var(--color-ink-inverse);
-	background: var(--color-terracotta-strong);
-	border-color: var(--color-terracotta-strong);
+	background: var(--color-forest-strong);
+	border-color: var(--color-forest-strong);
+}
+.button--danger {
+	color: var(--color-ink-inverse);
+	background: var(--color-danger);
+	border-color: var(--color-danger-strong);
+	box-shadow: inset 0 -2px 0 var(--color-danger-strong), var(--shadow-1);
+}
+.button--danger:hover {
+	color: var(--color-ink-inverse);
+	background: var(--color-danger-strong);
+	border-color: var(--color-danger-strong);
 }
 .button--quiet {
 	background: transparent;
@@ -191,12 +213,12 @@ code {
 	padding: var(--space-2) var(--space-3);
 	font: var(--text-m) / 1.3 var(--font-body);
 	color: var(--color-ink);
-	background: #fffdf7;
+	background: var(--color-surface-raised);
 	border: 1px solid var(--color-line-strong);
 	border-radius: var(--radius-s);
 }
 .input:hover {
-	border-color: var(--color-forest);
+	border-color: var(--color-slate);
 }
 .input[aria-invalid='true'] {
 	border-color: var(--color-danger);
@@ -232,7 +254,7 @@ code {
 .notice--error {
 	background: var(--color-danger-tint);
 	border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
-	color: #5e1f15;
+	color: var(--color-danger-strong);
 }
 .notice--error > svg {
 	color: var(--color-danger);
@@ -292,6 +314,11 @@ code {
 	}
 }
 
+/* Numbers that are compared or change in place: scores, counts, dice. */
+.numeric {
+	font-variant-numeric: lining-nums tabular-nums;
+}
+
 /* Icons: stroke drawings that inherit the text colour. */
 .icon {
 	width: 1.25em;
@@ -302,4 +329,16 @@ code {
 	stroke-linecap: round;
 	stroke-linejoin: round;
 	vertical-align: -0.2em;
+}
+
+/* A list of related rows on one surface, separated by lines rather than boxed one by one. */
+.stack {
+	background: var(--color-surface);
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-1);
+	overflow: hidden;
+}
+.stack > * + * {
+	border-top: 1px solid var(--color-line);
 }
