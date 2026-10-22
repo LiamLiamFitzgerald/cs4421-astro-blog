@@ -109,6 +109,16 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
   events into a regression test. Contexts `play:salvaged` (a damaged save was cut
   back) and `play:invariant` (a rule of the game was broken) are bugs to fix, not
   player mistakes.
+- Alarms and the dashboard (ADR-015): the deploy output prints `DashboardUrl`.
+  To get alarm emails, set the repository variable `ALARM_EMAIL` (Settings,
+  Secrets and variables, Actions, Variables), deploy, then click the
+  confirmation link AWS emails you. The canary rolls back on Lambda errors or on
+  any 5xx in the request log.
+- After every deploy, `scripts/smoke-test.sh SITE_URL` checks liveness,
+  readiness, the pages and an asset; run it by hand the same way. The hourly
+  **Uptime check** workflow runs it while the `SITE_URL` repository variable is
+  set. `docs/runbook.md` covers alarms, replaying a game, rollback and the
+  rollback drill (`drill` in App Environment, ADR-016).
 - `docker build -t catan-app .` builds the production image; CI builds it too.
   `docker build --target lambda .` adds the AWS Lambda Web Adapter for Lambda
   (pulled from public.ecr.aws, which rate-limits anonymous pulls; CI retries).
