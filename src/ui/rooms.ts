@@ -225,9 +225,42 @@ export function startRooms(report: FailureReporter): void {
 			if (!document.hidden) void feed.refresh();
 		});
 
+		// Push (ADR-019): a socket that says "changed"; polling remains the fallback.
+		let socketTries = 0;
+		const connectPush = (url: string) => {
+			let socket: WebSocket;
+			try {
+				socket = new WebSocket(`${url}?code=${roomCode}`);
+			} catch {
+				return;
+			}
+			socket.addEventListener('open', () => {
+				socketTries = 0;
+				feed.setPushConnected(true);
+				void feed.refresh(); // catch up on anything missed while disconnected
+			});
+			socket.addEventListener('message', (event) => {
+				try {
+					if ((JSON.parse(String(event.data)) as { type?: string }).type === 'changed') void feed.refresh();
+				} catch {
+					// Not a notice; ignore.
+				}
+			});
+			socket.addEventListener('close', () => {
+				feed.setPushConnected(false);
+				// API Gateway closes idle sockets after 10 minutes; reconnect with back-off.
+				socketTries += 1;
+				setTimeout(() => connectPush(url), Math.min(30_000, 1000 * 2 ** Math.min(socketTries, 5)));
+			});
+		};
+
 		screen = mountPlay(source, feedback, () => only(playSection), viewer);
 		await feed.start();
-		if (latest) await screen.render();
+		if (latest) {
+			await screen.render();
+			const push = (latest as RoomView & { push?: string }).push;
+			if (push) connectPush(push);
+		}
 	}
 
 	// ------------------------------------------------------------ phone: pick a seat

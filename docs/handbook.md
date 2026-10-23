@@ -96,9 +96,12 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - **Rooms** (`/rooms`, ADR-019): open it on the shared screen, enter the names
   and create a room; the board shows the code and a join link. Each player opens
   the link on their phone and picks their seat; the phone keeps a seat token in
-  `localStorage`, so reloading rejoins the same seat. Screens poll for changes
-  (fast while moves happen, slow when quiet, never while hidden). The static
-  site shows that rooms need the server version.
+  `localStorage`, so reloading rejoins the same seat. Moves are pushed: each
+  screen holds a WebSocket (API Gateway in AWS, a local stand-in when
+  `ROOMS_PUSH_LOCAL_PORT` is set, as the e2e tests do) that says "changed", and
+  the screen fetches its own view. Without a socket, screens poll (fast while
+  moves happen, slow when quiet, never while hidden). The static site shows that
+  rooms need the server version.
 - Rooms API (ADR-019), all on `/api/rooms`, `cache-control: no-store`:
   `GET ?code=ABCD&since=V` returns the view (send the seat token as
   `x-room-token` to see your own cards; `{unchanged, version}` when nothing is

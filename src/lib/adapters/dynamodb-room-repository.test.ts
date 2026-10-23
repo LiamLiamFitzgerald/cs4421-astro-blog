@@ -50,6 +50,14 @@ describe("Feature: the in-memory table follows DynamoDB's rules", () => {
     expect((await table.get("p", "META"))?.["version"]).toBe(0);
   });
 
+  it("deletes items, and deleting a missing one is fine", async () => {
+    const table = new MemoryTable();
+    await table.putIfAbsent({ pk: "p", sk: "a" });
+    await table.delete("p", "a");
+    await table.delete("p", "missing");
+    expect(await table.get("p", "a")).toBeNull();
+  });
+
   it("refuses an append to a partition with no META", async () => {
     expect(await new MemoryTable().appendAt("p", 0, 1, [])).toBe(false);
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createRoomFeed, FEED_FAST_MS, FEED_QUIET_AFTER_MS, FEED_SLOW_MS, type FeedAnswer } from "./room-feed";
+import { createRoomFeed, FEED_FAST_MS, FEED_PUSH_MS, FEED_QUIET_AFTER_MS, FEED_SLOW_MS, type FeedAnswer } from "./room-feed";
 
 type View = { name: string };
 
@@ -130,6 +130,25 @@ describe("Feature: keeping a room screen up to date", () => {
     await h.feed.refresh();
     await h.feed.refresh();
     expect(h.timers).toHaveLength(1);
+  });
+
+  it("given push is connected, polls only as a safety net, and normally again when it drops", async () => {
+    const h = harness([view(1)]);
+    await h.feed.start();
+    h.feed.setPushConnected(true);
+    expect(h.feed.nextDelay()).toBe(FEED_PUSH_MS);
+    expect(h.timers).toHaveLength(1);
+    expect(h.timers[0]?.at).toBe(FEED_PUSH_MS);
+    h.feed.setPushConnected(false);
+    expect(h.feed.nextDelay()).toBe(FEED_FAST_MS);
+    expect(h.timers[0]?.at).toBe(FEED_FAST_MS);
+  });
+
+  it("given push is connected but fetching fails, backs off as usual", async () => {
+    const h = harness([new Error("down")]);
+    h.feed.setPushConnected(true);
+    await h.feed.start();
+    expect(h.feed.nextDelay()).toBe(FEED_SLOW_MS);
   });
 
   it("before any view, reports no version", () => {

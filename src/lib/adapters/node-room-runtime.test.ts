@@ -10,6 +10,24 @@ describe("Feature: choosing where rooms live", () => {
     expect(deps.rooms).toBeInstanceOf(DynamoDbRoomRepository);
   });
 
+  it("given the WebSocket settings and a table, pushes through API Gateway", () => {
+    const deps = roomDepsFromEnvironment({ ROOMS_TABLE: "rooms", WS_CALLBACK_URL: "https://cb", WS_URL: "wss://ws" });
+    expect(deps.notify).toBeTypeOf("function");
+    expect(deps.pushUrl("example.org")).toBe("wss://ws");
+  });
+
+  it("given no push settings, has no notifier and screens poll", () => {
+    const deps = roomDepsFromEnvironment({ ROOMS_TABLE: "rooms", WS_URL: "wss://ws" });
+    expect(deps.notify).toBeUndefined();
+    expect(deps.pushUrl("example.org")).toBeNull();
+  });
+
+  it("given a local push port, uses the stand-in on the page's host", async () => {
+    const deps = roomDepsFromEnvironment({ ROOMS_PUSH_LOCAL_PORT: "4713" });
+    expect(deps.pushUrl("192.168.1.20")).toBe("ws://192.168.1.20:4713");
+    await deps.notify?.("ABCD");
+  });
+
   it("given no table, keeps rooms in memory", () => {
     const deps = roomDepsFromEnvironment({});
     expect(deps.storage).toBe("memory");

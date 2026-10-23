@@ -24,7 +24,7 @@ const token = (request: Request) => request.headers.get("x-room-token");
 const client = (request: Request) => clientAddress(request.headers.get("x-forwarded-for"));
 
 export const GET: APIRoute = async ({ request, url }) =>
-  json(await getRoom(deps, limits, url.searchParams, token(request), client(request)));
+  json(await getRoom(deps, limits, url.searchParams, token(request), client(request), deps.pushUrl(url.hostname)));
 
 export const POST: APIRoute = async ({ request }) => {
   const declared = Number(request.headers.get("content-length") ?? "0");

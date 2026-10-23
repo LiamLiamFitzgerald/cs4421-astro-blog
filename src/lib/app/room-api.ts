@@ -60,6 +60,8 @@ export async function getRoom(
   query: URLSearchParams,
   token: string | null,
   client: string,
+  /** Where screens connect for push notices (ADR-019), or null to poll only. */
+  push: string | null = null,
 ): Promise<ApiResponse> {
   if (!limits.view.allow(client)) return tooMany;
   const code = parseRoomCode(query.get("code") ?? "");
@@ -68,7 +70,9 @@ export async function getRoom(
   const since = rawSince === null ? null : Number(rawSince);
   if (since !== null && !(Number.isInteger(since) && since >= 0)) return refuse(400, "since must be a version number");
   const result = await getRoomView(deps, code, token, since);
-  return result.ok ? { status: 200, body: result.value } : fromRoomError(result.error);
+  if (!result.ok) return fromRoomError(result.error);
+  const full = !("unchanged" in result.value);
+  return { status: 200, body: full && push ? { ...result.value, push } : result.value };
 }
 
 export async function postRoom(

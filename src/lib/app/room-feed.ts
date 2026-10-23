@@ -35,11 +35,15 @@ export interface RoomFeed {
   version(): number | null;
   /** How long until the next poll, given what has happened so far. */
   nextDelay(): number;
+  /** Push is (or is no longer) delivering notices; while it is, polling is only a safety net. */
+  setPushConnected(connected: boolean): void;
 }
 
 export const FEED_FAST_MS = 1500;
 export const FEED_SLOW_MS = 10_000;
 export const FEED_QUIET_AFTER_MS = 60_000;
+/** Between safety-net polls while push notices are arriving. */
+export const FEED_PUSH_MS = 30_000;
 
 export function createRoomFeed<V>(options: FeedOptions<V>): RoomFeed {
   const fast = options.fastMs ?? FEED_FAST_MS;
@@ -51,8 +55,12 @@ export function createRoomFeed<V>(options: FeedOptions<V>): RoomFeed {
   let running = false;
   let timer: unknown = null;
   let inFlight: Promise<void> | null = null;
+  let pushed = false;
 
-  const nextDelay = () => (failed || options.now() - lastChange >= quietAfter ? slow : fast);
+  const nextDelay = () => {
+    if (pushed && !failed) return FEED_PUSH_MS;
+    return failed || options.now() - lastChange >= quietAfter ? slow : fast;
+  };
 
   function schedule() {
     if (timer !== null) options.clearTimer(timer);
@@ -101,5 +109,9 @@ export function createRoomFeed<V>(options: FeedOptions<V>): RoomFeed {
     },
     version: () => version,
     nextDelay,
+    setPushConnected(connected) {
+      pushed = connected;
+      schedule();
+    },
   };
 }

@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 import { type Sender, sdkTable } from "./dynamodb-sdk-table";
 
@@ -41,6 +41,12 @@ describe("Feature: the DynamoDB table calls", () => {
     expect(await table.get("p", "s")).toEqual({ pk: "p", sk: "s", x: 1 });
     expect(await table.get("p", "missing")).toBeNull();
     expect(sent[0]).toEqual({ name: GetCommand.name, input: { TableName: "T", Key: { pk: "p", sk: "s" }, ConsistentRead: true } });
+  });
+
+  it("deletes by key", async () => {
+    const { sender, sent } = client();
+    await sdkTable(sender, "T").delete("p", "s");
+    expect(sent[0]).toEqual({ name: DeleteCommand.name, input: { TableName: "T", Key: { pk: "p", sk: "s" } } });
   });
 
   it("queries a prefix, following pages until the end", async () => {

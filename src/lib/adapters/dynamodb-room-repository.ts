@@ -22,6 +22,8 @@ export interface Table {
   /** Writes the item unless one with the same key exists. False if it did. */
   putIfAbsent(item: Item): Promise<boolean>;
   get(pk: string, sk: string): Promise<Item | null>;
+  /** Removes an item if it exists. */
+  delete(pk: string, sk: string): Promise<void>;
   /** Items under `pk` whose sort key starts with `prefix` and is greater than `after`, in key order. */
   query(pk: string, prefix: string, after?: string): Promise<Item[]>;
   /**
@@ -120,6 +122,10 @@ export class MemoryTable implements Table {
   async get(pk: string, sk: string): Promise<Item | null> {
     const item = this.items.get(this.key(pk, sk));
     return item ? structuredClone(item) : null;
+  }
+
+  async delete(pk: string, sk: string): Promise<void> {
+    this.items.delete(this.key(pk, sk));
   }
 
   async query(pk: string, prefix: string, after?: string): Promise<Item[]> {

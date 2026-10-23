@@ -23,6 +23,24 @@ export interface RoomDeps {
   readonly newToken: () => string;
   /** One-way hash of a token; only hashes are stored. */
   readonly hashToken: (token: string) => string;
+  /**
+   * Tells the room's screens that something changed (the push side of the
+   * RoomFeed, ADR-019). It carries no game data: each screen then fetches its
+   * own view. Optional: without it, screens rely on polling.
+   */
+  readonly notify?: RoomNotifier;
+}
+
+/** Port: pushes "this room changed" to every screen connected to it. */
+export type RoomNotifier = (code: string) => Promise<void>;
+
+/** A failed notification must never fail the move: screens still catch up by polling. */
+async function tellScreens(deps: RoomDeps, code: string): Promise<void> {
+  try {
+    await deps.notify?.(code);
+  } catch {
+    // Polling is the fallback; nothing to undo.
+  }
 }
 
 /** Letters that cannot be mistaken for each other or for digits (no I, L, O, U). */
@@ -122,6 +140,7 @@ export async function joinSeat(
   if (!Number.isInteger(seat) || player === undefined) return err({ code: "NO_SUCH_SEAT", seats: room.names.length });
   const token = deps.newToken();
   if (!(await deps.rooms.claimSeat(code, seat, deps.hashToken(token)))) return err({ code: "SEAT_TAKEN" });
+  await tellScreens(deps, code);
   return ok({ token, player });
 }
 
@@ -158,6 +177,7 @@ export async function runRoomCommand(
     const decision = decide(state, withServerRandomness(command, state, deps.random));
     if (!decision.ok) return err({ code: "RULES", violation: decision.error });
     if (await deps.rooms.append(code, events.length, decision.value)) {
+      await tellScreens(deps, code);
       return ok({ moves: events.length + decision.value.length });
     }
   }

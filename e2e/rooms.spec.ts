@@ -78,3 +78,21 @@ test.describe("Feature: playing in a room", () => {
     await expect(board.locator("#play-players dl.hand")).toHaveCount(0);
   });
 });
+
+test.describe("Feature: moves are pushed to the screens", () => {
+  test("given the board is connected, a move arrives as a push notice, not by waiting for a poll", async ({ browser }) => {
+    const { board, code } = await openRoom(browser);
+    const notices: string[] = [];
+    board.on("websocket", (socket) => socket.on("framereceived", (frame) => notices.push(String(frame.payload))));
+    await board.reload();
+    await expect(board.locator(".room-bar__value")).toHaveText(code);
+
+    const ana = await phone(browser, code, "Ana");
+    await expect.poll(() => notices.length, { timeout: 5000 }).toBeGreaterThan(0);
+    expect(JSON.parse(notices[0] ?? "{}")).toEqual({ type: "changed" });
+
+    await ana.locator("#play-board [data-spot]").first().click();
+    await expect(board.locator("#play-events li").first()).toContainText("Ana built a settlement", { timeout: 1200 });
+  });
+});
+
