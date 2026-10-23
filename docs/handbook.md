@@ -93,6 +93,13 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - `GET /api/health` returns `{ status, uptime, timestamp }`.
 - `GET /api/live` (liveness) returns `{ status: "ok" }` and checks nothing else.
 - `GET /api/ready` (readiness) runs the named checks and returns 200 `{ status: "ready", checks }`, or 503 `not-ready` naming the failing checks.
+- Rooms API (ADR-019), all on `/api/rooms`, `cache-control: no-store`:
+  `GET ?code=ABCD&since=V` returns the view (send the seat token as
+  `x-room-token` to see your own cards; `{unchanged, version}` when nothing is
+  new); `POST {action:"create", names}`, `{action:"join", code, seat}` and
+  `{action:"command", code, command}` (token header). Errors are 400, 401, 403,
+  404, 409, 413, 422 (rules, with words and the violation), 429 or 503, never 500.
+  Rooms live in DynamoDB when `ROOMS_TABLE` is set, otherwise in memory.
 - Every request writes one JSON log line to stdout (timestamp, level, route,
   method, statusCode, latencyMs). An unhandled server error also writes an
   `"unhandled server error"` line with the error name and message.
