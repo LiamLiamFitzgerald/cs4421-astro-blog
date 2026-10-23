@@ -3,6 +3,9 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
+import * as path from 'node:path';
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -118,6 +121,33 @@ export class AppLambdaStack extends cdk.Stack {
     });
 
     rooms.grantReadWriteData(fn);
+
+    // ADR-019 push: screens hold a WebSocket per room; after a move the app posts
+    // a "changed" notice to each. The handler only records who is connected.
+    const connections = new lambda.Function(this, 'PushConnections', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda', 'push-connections')),
+      timeout: cdk.Duration.seconds(10),
+      description: 'Records which screens are connected to which room',
+      environment: { ROOMS_TABLE: rooms.tableName },
+    });
+    rooms.grantReadWriteData(connections);
+    const pushApi = new apigwv2.WebSocketApi(this, 'Push', {
+      description: 'Room change notices for the Catan screens (ADR-019)',
+      connectRouteOptions: { integration: new WebSocketLambdaIntegration('Connect', connections) },
+      disconnectRouteOptions: { integration: new WebSocketLambdaIntegration('Disconnect', connections) },
+    });
+    const pushStage = new apigwv2.WebSocketStage(this, 'PushStage', {
+      webSocketApi: pushApi,
+      stageName: 'live',
+      autoDeploy: true,
+      // A ceiling on connects and messages, so a flood is refused rather than billed.
+      throttle: { rateLimit: 50, burstLimit: 100 },
+    });
+    fn.addEnvironment('WS_URL', pushStage.url);
+    fn.addEnvironment('WS_CALLBACK_URL', pushStage.callbackUrl);
+    pushStage.grantManagementApiAccess(fn);
 
     // Every deploy publishes a version; traffic always goes through this alias.
     const live = new lambda.Alias(this, 'Live', {
@@ -356,6 +386,7 @@ export class AppLambdaStack extends cdk.Stack {
     // Used by the rollback drill to check which release is live and what CodeDeploy did.
     new cdk.CfnOutput(this, 'FunctionName', { value: fn.functionName });
     new cdk.CfnOutput(this, 'RoomsTable', { value: rooms.tableName });
+    new cdk.CfnOutput(this, 'PushUrl', { value: pushStage.url });
     new cdk.CfnOutput(this, 'DeployApplication', { value: deployment.application.applicationName });
     new cdk.CfnOutput(this, 'DeploymentGroupName', { value: deployment.deploymentGroupName });
     new cdk.CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });

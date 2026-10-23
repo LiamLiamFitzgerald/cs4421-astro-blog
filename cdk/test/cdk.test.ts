@@ -356,7 +356,10 @@ describe('Feature: rooms storage and cost ceilings (ADR-019)', () => {
   it('given no budget, there is no kill switch', () => {
     const none = build();
     none.resourceCountIs('AWS::Budgets::Budget', 0);
-    expect(Object.values(none.findResources('AWS::Lambda::Function'))).toHaveLength(1);
+    const handlers = Object.values(none.findResources('AWS::Lambda::Function')).map(
+      (f) => (f as { Properties: { Description?: string } }).Properties.Description ?? '',
+    );
+    expect(handlers.some((d) => d.includes('monthly budget'))).toBe(false);
   });
 
   it('given the kill switch code, it sets concurrency to 0 and says how to turn the site back on', () => {
@@ -374,6 +377,42 @@ describe('Feature: rooms storage and cost ceilings (ADR-019)', () => {
 
   it('given a deploy, outputs the table name', () => {
     template.hasOutput('RoomsTable', {});
+  });
+});
+
+describe('Feature: pushing room changes (ADR-019)', () => {
+  const template = Template.fromStack(new AppLambdaStack(new cdk.App(), 'TestPush', { env: { account: '111111111111', region: 'us-east-1' } }));
+  const appEnv = () =>
+    (
+      Object.values(template.findResources('AWS::Lambda::Function')).find(
+        (r) => (r as { Properties: { PackageType?: string } }).Properties.PackageType === 'Image',
+      ) as { Properties: { Environment: { Variables: Record<string, unknown> } } }
+    ).Properties.Environment.Variables;
+
+  it('given screens, a WebSocket API with connect and disconnect routes and a throttled live stage', () => {
+    template.hasResourceProperties('AWS::ApiGatewayV2::Api', { ProtocolType: 'WEBSOCKET' });
+    template.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: '$connect' });
+    template.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: '$disconnect' });
+    template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+      StageName: 'live',
+      AutoDeploy: true,
+      DefaultRouteSettings: Match.objectLike({ ThrottlingRateLimit: 50, ThrottlingBurstLimit: 100 }),
+    });
+  });
+
+  it('given the app, it knows where screens connect and may post to them', () => {
+    expect(appEnv()['WS_URL']).toBeDefined();
+    expect(appEnv()['WS_CALLBACK_URL']).toBeDefined();
+    expect(JSON.stringify(template.findResources('AWS::IAM::Policy'))).toContain('execute-api:ManageConnections');
+  });
+
+  it('given the connection handler, it is the plain Node.js runtime with the table name', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Runtime: 'nodejs22.x',
+      Description: 'Records which screens are connected to which room',
+      Environment: { Variables: { ROOMS_TABLE: Match.anyValue() } },
+    });
+    template.hasOutput('PushUrl', {});
   });
 });
 

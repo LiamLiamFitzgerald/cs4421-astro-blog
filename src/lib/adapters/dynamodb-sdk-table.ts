@@ -1,4 +1,5 @@
 import {
+  DeleteCommand,
   type DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -34,6 +35,10 @@ export function sdkTable(client: Sender, tableName: string): Table {
     async get(pk, sk) {
       const out = await client.send(new GetCommand({ TableName: tableName, Key: { pk, sk }, ConsistentRead: true }));
       return (out.Item as Item | undefined) ?? null;
+    },
+
+    async delete(pk, sk) {
+      await client.send(new DeleteCommand({ TableName: tableName, Key: { pk, sk } }));
     },
 
     async query(pk, prefix, after) {

@@ -326,3 +326,27 @@ describe("Feature: words for room problems", () => {
     expect(describeRoomError(error)).toMatch(words);
   });
 });
+
+describe("Feature: telling screens about changes", () => {
+  it("given a move or a seat taken, tells the room's screens; a refused move tells nobody", async () => {
+    const told: string[] = [];
+    const d = deps({ notify: async (c) => void told.push(c) });
+    const { code } = unwrap(await createRoom(d, ["Ana", "Ben"]));
+    const { token } = unwrap(await joinSeat(d, code, 0));
+    expect(told).toEqual([code]);
+    await runRoomCommand(d, code, token, { type: "EndTurn", player: "Ana" }); // refused: setup
+    expect(told).toEqual([code]);
+    const vertex = legalSetupSettlements(replayPlay(await d.rooms.events(code)))[0] ?? -1;
+    unwrap(await runRoomCommand(d, code, token, { type: "PlaceSetupSettlement", player: "Ana", vertex }));
+    expect(told).toEqual([code, code]);
+  });
+
+  it("given the notifier fails, the move still counts", async () => {
+    const d = deps({ notify: async () => Promise.reject(new Error("socket api down")) });
+    const { code } = unwrap(await createRoom(d, ["Ana", "Ben"]));
+    const { token } = unwrap(await joinSeat(d, code, 0));
+    const vertex = legalSetupSettlements(replayPlay(await d.rooms.events(code)))[0] ?? -1;
+    expect(unwrap(await runRoomCommand(d, code, token, { type: "PlaceSetupSettlement", player: "Ana", vertex }))).toEqual({ moves: 2 });
+  });
+});
+

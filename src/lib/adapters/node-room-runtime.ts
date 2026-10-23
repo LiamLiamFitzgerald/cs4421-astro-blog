@@ -1,25 +1,56 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { RoomDeps } from "../app/rooms";
-import { DynamoDbRoomRepository } from "./dynamodb-room-repository";
+import type { RoomDeps, RoomNotifier } from "../app/rooms";
+import { apiGatewayNotifier, sdkPoster } from "./apigw-room-notifier";
+import { DynamoDbRoomRepository, type Table } from "./dynamodb-room-repository";
 import { sdkTable } from "./dynamodb-sdk-table";
+import { type LocalPush, startLocalPush } from "./local-push-server";
 import { MemoryRoomRepository } from "./memory-room-repository";
 
+let localPush: LocalPush | null = null;
+
 /**
- * The real world for the room service (ADR-019): DynamoDB when ROOMS_TABLE is
- * set (the deployed stack sets it), otherwise rooms in memory for local
- * development and e2e tests. Randomness and tokens come from node:crypto.
+ * The real world for the room service (ADR-019):
+ *
+ * - storage: DynamoDB when ROOMS_TABLE is set (the deployed stack sets it),
+ *   otherwise rooms in memory for local development and e2e tests;
+ * - push: API Gateway when WS_CALLBACK_URL and WS_URL are set, the local
+ *   stand-in when ROOMS_PUSH_LOCAL_PORT is set, otherwise none (screens poll);
+ * - randomness and tokens from node:crypto.
  */
-export function roomDepsFromEnvironment(env: Record<string, string | undefined> = process.env): RoomDeps & { storage: "dynamodb" | "memory" } {
-  const table = env["ROOMS_TABLE"];
-  const rooms = table
-    ? new DynamoDbRoomRepository(
-        sdkTable(DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } }), table),
-      )
-    : new MemoryRoomRepository();
+export type RoomRuntime = RoomDeps & {
+  readonly storage: "dynamodb" | "memory";
+  /** Where screens connect for push notices, or null (polling only). */
+  readonly pushUrl: (hostname: string) => string | null;
+};
+
+export function roomDepsFromEnvironment(env: Record<string, string | undefined> = process.env): RoomRuntime {
+  const tableName = env["ROOMS_TABLE"];
+  const table: Table | null = tableName
+    ? sdkTable(DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } }), tableName)
+    : null;
+  const rooms = table ? new DynamoDbRoomRepository(table) : new MemoryRoomRepository();
+
+  let notify: RoomNotifier | undefined;
+  let pushUrl: (hostname: string) => string | null = () => null;
+  const callback = env["WS_CALLBACK_URL"];
+  const publicUrl = env["WS_URL"];
+  const localPort = Number(env["ROOMS_PUSH_LOCAL_PORT"] ?? "");
+  if (table && callback && publicUrl) {
+    notify = apiGatewayNotifier(table, sdkPoster(callback));
+    pushUrl = () => publicUrl;
+  } else if (Number.isInteger(localPort) && localPort > 0) {
+    localPush ??= startLocalPush(localPort);
+    const push = localPush;
+    notify = push.notify;
+    pushUrl = (hostname) => `ws://${hostname}:${push.port}`;
+  }
+
   return {
     storage: table ? "dynamodb" : "memory",
+    pushUrl,
+    ...(notify ? { notify } : {}),
     rooms,
     random: (n) => (n <= 1 ? 0 : randomInt(n)),
     now: () => new Date(),

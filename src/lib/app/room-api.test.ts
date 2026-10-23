@@ -128,6 +128,16 @@ describe("Feature: views over HTTP", () => {
     expect(body(res)).toMatchObject({ code: s.code, version: 9, you: null });
   });
 
+  it("given a push address, includes it with a full view but not with 'nothing new'", async () => {
+    const s = await room();
+    const full = await getRoom(s.deps, s.limits, new URLSearchParams({ code: s.code }), null, "ip", "wss://push");
+    expect(body(full)["push"]).toBe("wss://push");
+    const same = await getRoom(s.deps, s.limits, new URLSearchParams({ code: s.code, since: "9" }), null, "ip", "wss://push");
+    expect(body(same)).toEqual({ unchanged: true, version: 9 });
+    const none = await getRoom(s.deps, s.limits, new URLSearchParams({ code: s.code }), null, "ip");
+    expect(body(none)["push"]).toBeUndefined();
+  });
+
   it("given a token, returns that seat's view", async () => {
     const s = await room();
     expect(body(await getRoom(s.deps, s.limits, new URLSearchParams({ code: s.code }), s.ana, "ip"))["you"]).toBe("Ana");
