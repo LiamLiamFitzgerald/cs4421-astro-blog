@@ -114,6 +114,11 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
   Secrets and variables, Actions, Variables), deploy, then click the
   confirmation link AWS emails you. The canary rolls back on Lambda errors or on
   any 5xx in the request log.
+- After every deploy, `scripts/smoke-test.sh SITE_URL` checks liveness,
+  readiness, the pages and an asset; run it by hand the same way. The hourly
+  **Uptime check** workflow runs it while the `SITE_URL` repository variable is
+  set. `docs/runbook.md` covers alarms, replaying a game, rollback and the
+  rollback drill (`drill` in App Environment, ADR-016).
 - `docker build -t catan-app .` builds the production image; CI builds it too.
   `docker build --target lambda .` adds the AWS Lambda Web Adapter for Lambda
   (pulled from public.ecr.aws, which rate-limits anonymous pulls; CI retries).
@@ -134,7 +139,12 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
   fall within the Lambda and CloudFront free allowances at this traffic.
 - The ECS Fargate stack (`cdk/lib/app-service-stack.ts`, ADR-001) is commented
   out of `cdk/bin/cdk.ts` but kept and tested, so it can be restored.
-- The old S3 static deploy stays retired (manual-only).
+- The static site (ADR-018) is the same Catan app built as plain files:
+  `npm run build:static` writes `dist/` with no server and no `/api`. Actions,
+  **Deploy Static Site** publishes it to S3 behind CloudFront and prints
+  `StaticSiteUrl`. Games work and are saved in the browser exactly as on the
+  server deploy; browser errors stay in the console because there is no server
+  to report to. Preview locally with any static file server on `dist/`.
 
 ## Branch protection
 

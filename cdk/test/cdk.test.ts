@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib/core';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { AppServiceStack } from '../lib/app-service-stack';
 import { AppLambdaStack } from '../lib/app-lambda-stack';
+import { INDEX_REWRITE, StaticSiteStack } from '../lib/static-site-stack';
 
 describe('Feature: container service stack (ADR-001)', () => {
   const app = new cdk.App();
@@ -60,7 +61,7 @@ describe('Feature: Lambda app stack (ADR-010)', () => {
       PackageType: 'Image',
       MemorySize: 512,
       Environment: {
-        Variables: { AWS_LWA_PORT: '4321', AWS_LWA_READINESS_CHECK_PATH: '/api/health' },
+        Variables: { AWS_LWA_PORT: '4321', AWS_LWA_READINESS_CHECK_PATH: '/api/ready' },
       },
     });
   });
@@ -195,6 +196,101 @@ describe('Feature: alarms, notifications and dashboard (ADR-015)', () => {
   it('given a deploy, outputs the dashboard link and the topic', () => {
     template.hasOutput('DashboardUrl', {});
     template.hasOutput('AlarmTopicArn', {});
+  });
+});
+
+describe('Feature: rollback drill (ADR-016)', () => {
+  const build = (rollbackDrill?: boolean) =>
+    Template.fromStack(
+      new AppLambdaStack(new cdk.App(), 'TestDrill', { env: { account: '111111111111', region: 'us-east-1' }, rollbackDrill }),
+    );
+  const variables = (template: Template) =>
+    (
+      Object.values(template.findResources('AWS::Lambda::Function'))[0] as {
+        Properties: { Environment: { Variables: Record<string, string> } };
+      }
+    ).Properties.Environment.Variables;
+
+  it('given a normal deploy, the release does not fail on purpose', () => {
+    expect(variables(build())).not.toHaveProperty('ROLLBACK_DRILL');
+    expect(variables(build(false))).not.toHaveProperty('ROLLBACK_DRILL');
+  });
+
+  it('given the drill, the release fails requests on purpose', () => {
+    expect(variables(build(true))).toMatchObject({ ROLLBACK_DRILL: 'fail-requests' });
+  });
+
+  it('given the drill, outputs what it needs to check the rollback', () => {
+    const template = build();
+    for (const name of ['FunctionName', 'DeployApplication', 'DeploymentGroupName']) template.hasOutput(name, {});
+  });
+});
+
+describe('Feature: static site serves the Catan app (ADR-018)', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const os = require('node:os') as typeof import('node:os');
+  const path = require('node:path') as typeof import('node:path');
+  const siteDir = fs.mkdtempSync(path.join(os.tmpdir(), 'static-site-'));
+  fs.writeFileSync(path.join(siteDir, 'index.html'), '<html></html>');
+  const template = Template.fromStack(
+    new StaticSiteStack(new cdk.App(), 'TestStaticSite', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      siteDir,
+    }),
+  );
+  const handler = new Function(`${INDEX_REWRITE}; return handler;`)() as (event: {
+    request: { uri: string };
+  }) => { uri: string };
+  const rewrite = (uri: string) => handler({ request: { uri } }).uri;
+
+  it.each([
+    ['/', '/index.html'],
+    ['/catan', '/catan/index.html'],
+    ['/catan/', '/catan/index.html'],
+    ['/about', '/about/index.html'],
+    ['/_astro/board.abc123.css', '/_astro/board.abc123.css'],
+    ['/favicon.svg', '/favicon.svg'],
+    ['/404.html', '/404.html'],
+  ])('given a request for %s, CloudFront asks S3 for %s', (uri, expected) => {
+    expect(rewrite(uri)).toBe(expected);
+  });
+
+  it('given visitors, the rewrite runs on every request and HTTP redirects to HTTPS', () => {
+    template.hasResourceProperties('AWS::CloudFront::Function', {
+      FunctionConfig: Match.objectLike({ Runtime: 'cloudfront-js-2.0' }),
+    });
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        DefaultRootObject: 'index.html',
+        DefaultCacheBehavior: Match.objectLike({
+          ViewerProtocolPolicy: 'redirect-to-https',
+          FunctionAssociations: [Match.objectLike({ EventType: 'viewer-request' })],
+        }),
+      }),
+    });
+  });
+
+  it('given a page that does not exist, the site 404 page is shown with status 404', () => {
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        CustomErrorResponses: Match.arrayWith([
+          Match.objectLike({ ErrorCode: 403, ResponseCode: 404, ResponsePagePath: '/404.html' }),
+          Match.objectLike({ ErrorCode: 404, ResponseCode: 404, ResponsePagePath: '/404.html' }),
+        ]),
+      }),
+    });
+  });
+
+  it('given the bucket, it is private and only reachable over HTTPS', () => {
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+    });
+    template.hasOutput('StaticSiteUrl', {});
   });
 });
 

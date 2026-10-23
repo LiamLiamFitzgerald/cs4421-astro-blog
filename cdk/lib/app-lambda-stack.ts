@@ -20,6 +20,11 @@ export interface AppLambdaStackProps extends cdk.StackProps {
    * subscriber, so alarms still show on the dashboard and still roll back.
    */
   readonly alarmEmail?: string;
+  /**
+   * ADR-016: deploy a release that fails on purpose, to prove the canary rolls
+   * it back. Only the rollback drill sets this.
+   */
+  readonly rollbackDrill?: boolean;
 }
 
 /**
@@ -51,9 +56,10 @@ export class AppLambdaStack extends cdk.Stack {
       description: 'Catan Tracker (Astro Node server via Lambda Web Adapter)',
       environment: {
         // The Web Adapter forwards requests to this port and waits for the
-        // health endpoint before sending traffic (the readiness check).
+        // readiness endpoint (ADR-013) before sending traffic.
         AWS_LWA_PORT: '4321',
-        AWS_LWA_READINESS_CHECK_PATH: '/api/health',
+        AWS_LWA_READINESS_CHECK_PATH: '/api/ready',
+        ...(props.rollbackDrill ? { ROLLBACK_DRILL: 'fail-requests' } : {}),
       },
     });
 
@@ -128,7 +134,7 @@ export class AppLambdaStack extends cdk.Stack {
       alarmDescription: 'The app answered with a 5xx. CodeDeploy rolls back while this is in alarm.',
     });
 
-    new codedeploy.LambdaDeploymentGroup(this, 'Deploy', {
+    const deployment = new codedeploy.LambdaDeploymentGroup(this, 'Deploy', {
       alias: live,
       deploymentConfig: codedeploy.LambdaDeploymentConfig.CANARY_10PERCENT_5MINUTES,
       alarms: [errors, serverErrors],
@@ -232,6 +238,10 @@ export class AppLambdaStack extends cdk.Stack {
       value: `https://${this.region}.console.aws.amazon.com/cloudwatch/home?region=${this.region}#dashboards/dashboard/${dashboard.dashboardName}`,
     });
     new cdk.CfnOutput(this, 'AlarmTopicArn', { value: topic.topicArn });
+    // Used by the rollback drill to check which release is live and what CodeDeploy did.
+    new cdk.CfnOutput(this, 'FunctionName', { value: fn.functionName });
+    new cdk.CfnOutput(this, 'DeployApplication', { value: deployment.application.applicationName });
+    new cdk.CfnOutput(this, 'DeploymentGroupName', { value: deployment.deploymentGroupName });
     new cdk.CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });
     new cdk.CfnOutput(this, 'HealthUrl', { value: `https://${distribution.distributionDomainName}/api/health` });
     new cdk.CfnOutput(this, 'FunctionUrl', { value: url.url });
