@@ -1,17 +1,38 @@
 // @ts-check
 
+import { rm } from 'node:fs/promises';
 import node from '@astrojs/node';
 import sitemap from '@astrojs/sitemap';
 import { defineConfig, fontProviders } from 'astro/config';
+
+/**
+ * ADR-018: the same app can also be built as plain files for the static site
+ * (S3 + CloudFront). `npm run build:static` sets SITE_MODE=static. The game
+ * runs in the browser, so only the /api endpoints need a server; they are
+ * removed from the static build rather than frozen into misleading files.
+ */
+const staticSite = process.env.SITE_MODE === 'static';
+
+/** @type {import('astro').AstroIntegration} */
+const dropApiFromStaticBuild = {
+	name: 'drop-api-from-static-build',
+	hooks: {
+		'astro:build:done': async ({ dir }) => {
+			await rm(new URL('api/', dir), { recursive: true, force: true });
+		},
+	},
+};
 
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://example.com',
 	// Server-rendered on the Node adapter so the app can expose /api/health and log
 	// requests (see docs/adr/ADR-001). Packaged by the Dockerfile.
-	output: 'server',
-	adapter: node({ mode: 'standalone' }),
-	integrations: [sitemap()],
+	output: staticSite ? 'static' : 'server',
+	...(staticSite ? {} : { adapter: node({ mode: 'standalone' }) }),
+	integrations: staticSite ? [sitemap(), dropApiFromStaticBuild] : [sitemap()],
+	// Lets the browser code know there is no server to report errors to.
+	vite: { define: { 'import.meta.env.PUBLIC_STATIC_SITE': JSON.stringify(staticSite) } },
 	// Self-hosted (OFL licences in src/assets/fonts). No third-party font CDN.
 	fonts: [
 		{

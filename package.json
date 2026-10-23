@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
+    "build:static": "node scripts/build-static.mjs",
     "preview": "astro preview",
     "astro": "astro",
     "lint": "eslint .",
