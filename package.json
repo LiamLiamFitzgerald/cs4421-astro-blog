@@ -24,6 +24,8 @@
     "@astrojs/mdx": "^8.1.0",
     "@astrojs/node": "^11.1.7",
     "@astrojs/sitemap": "^3.7.4",
+    "@aws-sdk/client-dynamodb": "^3.1156.0",
+    "@aws-sdk/lib-dynamodb": "^3.1156.0",
     "astro": "^7.3.2",
     "sharp": "^0.35.0"
   },
