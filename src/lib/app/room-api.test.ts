@@ -90,7 +90,7 @@ describe("Feature: playing over HTTP", () => {
       s.ana,
       "ip",
     );
-    expect(res).toEqual({ status: 200, body: { version: 2 } });
+    expect(res).toEqual({ status: 200, body: { moves: 2 } });
   });
 
   it("given no token, answers 401", async () => {
@@ -125,7 +125,7 @@ describe("Feature: views over HTTP", () => {
     const s = await room();
     const res = await getRoom(s.deps, s.limits, new URLSearchParams({ code: s.code }), null, "ip");
     expect(res.status).toBe(200);
-    expect(body(res)).toMatchObject({ code: s.code, version: 1, you: null });
+    expect(body(res)).toMatchObject({ code: s.code, version: 9, you: null });
   });
 
   it("given a token, returns that seat's view", async () => {
@@ -135,9 +135,9 @@ describe("Feature: views over HTTP", () => {
 
   it("given the current version, says nothing new", async () => {
     const s = await room();
-    expect(await getRoom(s.deps, s.limits, new URLSearchParams({ code: s.code, since: "1" }), null, "ip")).toEqual({
+    expect(await getRoom(s.deps, s.limits, new URLSearchParams({ code: s.code, since: "9" }), null, "ip")).toEqual({
       status: 200,
-      body: { unchanged: true, version: 1 },
+      body: { unchanged: true, version: 9 },
     });
   });
 

@@ -93,6 +93,12 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - `GET /api/health` returns `{ status, uptime, timestamp }`.
 - `GET /api/live` (liveness) returns `{ status: "ok" }` and checks nothing else.
 - `GET /api/ready` (readiness) runs the named checks and returns 200 `{ status: "ready", checks }`, or 503 `not-ready` naming the failing checks.
+- **Rooms** (`/rooms`, ADR-019): open it on the shared screen, enter the names
+  and create a room; the board shows the code and a join link. Each player opens
+  the link on their phone and picks their seat; the phone keeps a seat token in
+  `localStorage`, so reloading rejoins the same seat. Screens poll for changes
+  (fast while moves happen, slow when quiet, never while hidden). The static
+  site shows that rooms need the server version.
 - Rooms API (ADR-019), all on `/api/rooms`, `cache-control: no-store`:
   `GET ?code=ABCD&since=V` returns the view (send the seat token as
   `x-room-token` to see your own cards; `{unchanged, version}` when nothing is

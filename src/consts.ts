@@ -10,5 +10,6 @@ export const AUTHOR = 'Liam Fitzgerald';
 export const NAV = [
 	{ href: '/', label: 'Home' },
 	{ href: '/catan', label: 'Play' },
+	{ href: '/rooms', label: 'Rooms' },
 	{ href: '/about', label: 'About' },
 ] as const;
