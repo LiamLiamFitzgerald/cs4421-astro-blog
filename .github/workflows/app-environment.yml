@@ -8,6 +8,7 @@ name: App Environment (Lambda)
 #   drill    - rollback drill (ADR-016): deploy a good release, then one that
 #              fails on purpose under traffic, and prove CodeDeploy rolled it
 #              back and the good release still serves. Leaves the good one up.
+#   revive   - turn the site back on after the budget kill switch (ADR-019)
 #   destroy  - delete the stack
 # The nightly safety-net destroy used for Fargate (ADR-001) is no longer needed.
 on:
@@ -16,7 +17,7 @@ on:
       action:
         description: "What to do with the app environment"
         type: choice
-        options: [deploy, rehearse, drill, destroy]
+        options: [deploy, rehearse, drill, revive, destroy]
         default: rehearse
 
 permissions:
@@ -28,6 +29,8 @@ concurrency:
 
 env:
   ACTION: ${{ github.event.inputs.action }}
+  # ADR-019 cost ceilings, the same on every deploy (a deploy without them would remove them).
+  CDK_FLAGS: -c maxConcurrency=${{ vars.MAX_CONCURRENCY || 'none' }} -c budgetUsd=${{ vars.BUDGET_USD || '5' }}
 
 jobs:
   environment:
@@ -54,7 +57,7 @@ jobs:
       # Signed-in pulls from public.ecr.aws (the Lambda Web Adapter) get a much
       # higher rate limit than anonymous ones.
       - name: Sign in to Amazon ECR Public
-        if: env.ACTION != 'destroy'
+        if: env.ACTION != 'destroy' && env.ACTION != 'revive'
         run: |
           aws ecr-public get-login-password --region us-east-1 \
             | docker login --username AWS --password-stdin public.ecr.aws \
@@ -65,8 +68,8 @@ jobs:
         working-directory: cdk
 
       - name: Deploy with CDK (builds and pushes the image, canary via CodeDeploy)
-        if: env.ACTION != 'destroy'
-        run: npx cdk deploy AppLambdaStack --require-approval never --outputs-file outputs.json
+        if: env.ACTION != 'destroy' && env.ACTION != 'revive'
+        run: npx cdk deploy AppLambdaStack $CDK_FLAGS --require-approval never --outputs-file outputs.json
         working-directory: cdk
         env:
           # ADR-015: where alarm emails go. A repository variable, not a secret
@@ -74,7 +77,7 @@ jobs:
           ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
 
       - name: Smoke test (live, ready, pages, assets)
-        if: env.ACTION != 'destroy'
+        if: env.ACTION != 'destroy' && env.ACTION != 'revive'
         run: |
           SITE=$(node -p "require('./cdk/outputs.json').AppLambdaStack.SiteUrl")
           echo "SITE=$SITE" >> "$GITHUB_ENV"
@@ -103,7 +106,7 @@ jobs:
           # and the ServerErrors alarm fires.
           ( for i in $(seq 1 150); do curl -s -o /dev/null "$SITE/catan" || true; sleep 4; done ) &
           TRAFFIC=$!
-          if npx cdk deploy AppLambdaStack -c rollbackDrill=true --require-approval never; then
+          if npx cdk deploy AppLambdaStack $CDK_FLAGS -c rollbackDrill=true --require-approval never; then
             kill "$TRAFFIC" || true
             echo "::error::The broken release was NOT rolled back. The canary alarm did not stop it."
             exit 1
@@ -132,6 +135,25 @@ jobs:
       - name: "Drill: smoke test after the rollback"
         if: env.ACTION == 'drill'
         run: SMOKE_ATTEMPTS=4 bash scripts/smoke-test.sh "$SITE"
+
+      # ------------------------------------------------- revive after the kill switch (ADR-019)
+
+      - name: "Revive: give the app its concurrency back"
+        if: env.ACTION == 'revive'
+        env:
+          MAX_CONCURRENCY: ${{ vars.MAX_CONCURRENCY }}
+        run: |
+          FN=$(aws cloudformation describe-stacks --stack-name AppLambdaStack \
+            --query "Stacks[0].Outputs[?OutputKey=='FunctionName'].OutputValue" --output text)
+          if [ -n "$MAX_CONCURRENCY" ] && [ "$MAX_CONCURRENCY" != "none" ]; then
+            aws lambda put-function-concurrency --function-name "$FN" --reserved-concurrent-executions "$MAX_CONCURRENCY"
+          else
+            aws lambda delete-function-concurrency --function-name "$FN"
+          fi
+          echo "Site turned back on ($FN)." | tee -a "$GITHUB_STEP_SUMMARY"
+          SITE=$(aws cloudformation describe-stacks --stack-name AppLambdaStack \
+            --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text)
+          SMOKE_ATTEMPTS=6 bash scripts/smoke-test.sh "$SITE"
 
       - name: Destroy AppLambdaStack
         # Runs for destroy, and always after a rehearsal.

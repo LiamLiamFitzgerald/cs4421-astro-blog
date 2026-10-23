@@ -8,6 +8,15 @@ import { AppLambdaStack } from '../lib/app-lambda-stack';
 
 const app = new cdk.App();
 
+/** A context value as a number, `undefined` for "none", or the default when it is not set. */
+function numberOrNone(value: unknown, fallback: number | undefined): number | undefined {
+  if (value === undefined || value === '') return fallback;
+  if (value === 'none') return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`Expected a number or "none", got ${String(value)}`);
+  return n;
+}
+
 // ADR-018: the static site publishes the Catan app built by `npm run build:static`,
 // which writes dist/index.html. The server build (dist/client, dist/server) and a
 // clean checkout have no such file, so the stack is defined only for a static
@@ -32,4 +41,9 @@ new AppLambdaStack(app, 'AppLambdaStack', {
   alarmEmail: process.env.ALARM_EMAIL || undefined,
   // ADR-016: `cdk deploy -c rollbackDrill=true` deploys a release that fails on purpose.
   rollbackDrill: app.node.tryGetContext('rollbackDrill') === 'true',
+  // ADR-019 cost ceilings, from the MAX_CONCURRENCY and BUDGET_USD repository variables.
+  // No cap by default: an account whose Lambda limit is 10 cannot reserve any (and is
+  // then capped at 10 by AWS anyway). The kill switch defaults to a $5 budget.
+  maxConcurrency: numberOrNone(app.node.tryGetContext('maxConcurrency'), undefined),
+  budgetUsd: numberOrNone(app.node.tryGetContext('budgetUsd'), 5),
 });
