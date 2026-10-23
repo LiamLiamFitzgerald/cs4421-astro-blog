@@ -27,6 +27,8 @@ export function setGameSource(source: GameSource): void {
  */
 export function reportError(error: unknown, context: string, game?: GameContext): void {
 	console.error(`[${context}]`, error);
+	// The static site (ADR-018) has no server to receive reports; the console entry stays.
+	if (import.meta.env.PUBLIC_STATIC_SITE === true) return;
 	if (sent >= MAX_REPORTS_PER_PAGE) return;
 	sent += 1;
 	let attached = game;
