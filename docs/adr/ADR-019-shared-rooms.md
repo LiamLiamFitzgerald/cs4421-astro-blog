@@ -64,10 +64,13 @@ opened whenever someone wants to play.
 7. **The endpoints** run on the existing Lambda: create a room (board), join a
    seat (phone), send a command, get the view. The room code is 4 letters from an
    unambiguous alphabet.
-8. **Guardrails, so it can be left alone:** reserved concurrency caps the
-   worst-case bill; limits on room creation and request rates; one-week log
-   retention (ADR-015); and a **kill switch** that sets the app's concurrency to 0
-   when the budget alert fires.
+8. **Guardrails, so it can be left alone:** an optional reserved concurrency
+   cap (`MAX_CONCURRENCY`; accounts whose total Lambda limit is 10 cannot reserve
+   any and are capped at 10 by AWS); limits on room creation and request rates;
+   one-week log retention (ADR-015); a throttling alarm on the table; and a
+   **kill switch**: a monthly budget (`BUDGET_USD`, default 5 dollars) notifies a
+   function that sets the app's concurrency to 0 and emails the alarm topic.
+   `revive` in the App Environment workflow turns the site back on.
 9. **Local and test setup:** a memory adapter for local development and e2e
    tests; the DynamoDB adapter passes the shared `EventStore` contract tests
    against an in-memory stand-in that enforces the same conditional writes.

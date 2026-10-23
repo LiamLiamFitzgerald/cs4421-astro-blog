@@ -3,6 +3,9 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -25,7 +28,43 @@ export interface AppLambdaStackProps extends cdk.StackProps {
    * it back. Only the rollback drill sets this.
    */
   readonly rollbackDrill?: boolean;
+  /**
+   * ADR-019: the most copies of the app that may run at once, which caps the
+   * worst-case bill. Undefined leaves it uncapped (an account whose total limit
+   * is 10 cannot reserve any; AWS needs 10 left unreserved).
+   */
+  readonly maxConcurrency?: number;
+  /** ADR-019: monthly spend, in US dollars, at which the kill switch turns the site off. */
+  readonly budgetUsd?: number;
 }
+
+/** DynamoDB's always-free allowance is 25 read and 25 write units per account; rooms use part of it. */
+export const ROOMS_READ_CAPACITY = 10;
+export const ROOMS_WRITE_CAPACITY = 5;
+
+/**
+ * Runs when the budget is spent (ADR-019): sets the app's concurrency to 0, so
+ * every request is refused and nothing more is billed, then says so. The AWS
+ * SDK is part of the Lambda Node.js runtime, so this needs no bundling.
+ */
+export const KILL_SWITCH_CODE = `
+const { LambdaClient, PutFunctionConcurrencyCommand } = require('@aws-sdk/client-lambda');
+const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
+exports.handler = async (event) => {
+  await new LambdaClient({}).send(new PutFunctionConcurrencyCommand({
+    FunctionName: process.env.APP_FUNCTION,
+    ReservedConcurrentExecutions: 0,
+  }));
+  await new SNSClient({}).send(new PublishCommand({
+    TopicArn: process.env.ALERT_TOPIC,
+    Subject: 'Catan Tracker: budget reached, site turned off',
+    Message: 'The monthly budget was reached, so the kill switch set the app function concurrency to 0. ' +
+      'Every request is now refused and nothing more is billed. To turn the site back on, run the App ' +
+      'Environment workflow with action revive (see docs/runbook.md).',
+  }));
+  return { stopped: process.env.APP_FUNCTION, records: (event.Records || []).length };
+};
+`;
 
 /**
  * ADR-010: the same container image as before, run on AWS Lambda.
@@ -46,6 +85,19 @@ export class AppLambdaStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // ADR-019: rooms and their event logs. Provisioned inside the free allowance,
+    // so heavy use is throttled rather than billed; TTL deletes old rooms.
+    const rooms = new dynamodb.Table(this, 'Rooms', {
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PROVISIONED,
+      readCapacity: ROOMS_READ_CAPACITY,
+      writeCapacity: ROOMS_WRITE_CAPACITY,
+      timeToLiveAttribute: 'expiresAt',
+      // Rooms are disposable (48 hours) and hold no account data.
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const fn = new lambda.DockerImageFunction(this, 'App', {
       // The Dockerfile's `lambda` stage: the app image plus the Web Adapter.
       code: lambda.DockerImageCode.fromImageAsset('..', { target: 'lambda' }),
@@ -60,8 +112,12 @@ export class AppLambdaStack extends cdk.Stack {
         AWS_LWA_PORT: '4321',
         AWS_LWA_READINESS_CHECK_PATH: '/api/ready',
         ...(props.rollbackDrill ? { ROLLBACK_DRILL: 'fail-requests' } : {}),
+        ROOMS_TABLE: rooms.tableName,
       },
+      ...(props.maxConcurrency === undefined ? {} : { reservedConcurrentExecutions: props.maxConcurrency }),
     });
+
+    rooms.grantReadWriteData(fn);
 
     // Every deploy publishes a version; traffic always goes through this alias.
     const live = new lambda.Alias(this, 'Live', {
@@ -197,6 +253,65 @@ export class AppLambdaStack extends cdk.Stack {
       alarmDescription: 'A saved game was damaged or broke a rule of the game (ADR-014). Replay the logged eventLog.',
     });
 
+    const roomsThrottled = alarm('RoomsThrottled', {
+      metric: new cloudwatch.MathExpression({
+        expression: 'reads + writes',
+        usingMetrics: {
+          reads: rooms.metric('ReadThrottleEvents', { statistic: 'Sum', period: cdk.Duration.minutes(5) }),
+          writes: rooms.metric('WriteThrottleEvents', { statistic: 'Sum', period: cdk.Duration.minutes(5) }),
+        },
+        label: 'Throttled room reads and writes',
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      alarmDescription: 'The rooms table hit its free capacity (ADR-019): requests were throttled, not billed.',
+    });
+
+    // ADR-019 kill switch: the budget tells this topic, the function turns the site off.
+    if (props.budgetUsd !== undefined) {
+      const budgetTopic = new sns.Topic(this, 'BudgetReached', { displayName: 'Catan Tracker budget reached' });
+      budgetTopic.addToResourcePolicy(
+        new iam.PolicyStatement({
+          principals: [new iam.ServicePrincipal('budgets.amazonaws.com')],
+          actions: ['sns:Publish'],
+          resources: [budgetTopic.topicArn],
+        }),
+      );
+      const killSwitch = new lambda.Function(this, 'KillSwitch', {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        handler: 'index.handler',
+        code: lambda.Code.fromInline(KILL_SWITCH_CODE),
+        timeout: cdk.Duration.seconds(30),
+        description: 'Turns the app off (concurrency 0) when the monthly budget is reached',
+        environment: { APP_FUNCTION: fn.functionName, ALERT_TOPIC: topic.topicArn },
+      });
+      killSwitch.addToRolePolicy(
+        new iam.PolicyStatement({ actions: ['lambda:PutFunctionConcurrency'], resources: [fn.functionArn] }),
+      );
+      topic.grantPublish(killSwitch);
+      budgetTopic.addSubscription(new subscriptions.LambdaSubscription(killSwitch));
+      new budgets.CfnBudget(this, 'Budget', {
+        budget: {
+          budgetName: `${cdk.Stack.of(this).stackName}-monthly`,
+          budgetType: 'COST',
+          timeUnit: 'MONTHLY',
+          budgetLimit: { amount: props.budgetUsd, unit: 'USD' },
+        },
+        notificationsWithSubscribers: [
+          {
+            notification: {
+              notificationType: 'ACTUAL',
+              comparisonOperator: 'GREATER_THAN',
+              threshold: 100,
+              thresholdType: 'PERCENTAGE',
+            },
+            subscribers: [{ subscriptionType: 'SNS', address: budgetTopic.topicArn }],
+          },
+        ],
+      });
+    }
+
     const dashboard = new cloudwatch.Dashboard(this, 'Dashboard', {
       dashboardName: `${cdk.Stack.of(this).stackName}-health`,
       defaultInterval: cdk.Duration.hours(3),
@@ -205,7 +320,7 @@ export class AppLambdaStack extends cdk.Stack {
       new cloudwatch.AlarmStatusWidget({
         title: 'Alarms',
         width: 24,
-        alarms: [errors, serverErrors, throttles, slow, edgeErrors, browserErrors, gameLog],
+        alarms: [errors, serverErrors, throttles, slow, edgeErrors, browserErrors, gameLog, roomsThrottled],
       }),
     );
     dashboard.addWidgets(
@@ -240,6 +355,7 @@ export class AppLambdaStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AlarmTopicArn', { value: topic.topicArn });
     // Used by the rollback drill to check which release is live and what CodeDeploy did.
     new cdk.CfnOutput(this, 'FunctionName', { value: fn.functionName });
+    new cdk.CfnOutput(this, 'RoomsTable', { value: rooms.tableName });
     new cdk.CfnOutput(this, 'DeployApplication', { value: deployment.application.applicationName });
     new cdk.CfnOutput(this, 'DeploymentGroupName', { value: deployment.deploymentGroupName });
     new cdk.CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });

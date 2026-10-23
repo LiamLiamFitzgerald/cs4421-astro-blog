@@ -49,6 +49,27 @@ All from Actions, **App Environment (Lambda)**, Run workflow:
 - To roll back by hand, revert the change on `develop` (or `main`) and deploy
   again. The previous image is rebuilt from the reverted code.
 
+## Rooms and the cost ceilings (ADR-019)
+
+- Rooms live in the `RoomsTable` DynamoDB table (stack output), provisioned
+  inside the always-free allowance. Too much traffic is throttled, not billed;
+  the **RoomsThrottled** alarm says when that happens. Rooms delete themselves
+  48 hours after they are created (TTL).
+- **Kill switch:** a monthly AWS budget (`BUDGET_USD` repository variable,
+  default 5 dollars) notifies a topic; a small function sets the app's
+  concurrency to 0, so every request is refused and nothing more is billed, and
+  emails the alarm topic. AWS updates spend a few times a day, so it can act
+  hours after the money is spent; it is a ceiling, not a meter.
+- **Turning the site back on:** run App Environment with **`revive`**. It
+  restores the concurrency (`MAX_CONCURRENCY` if set, otherwise uncapped) and
+  smoke-tests the site.
+- **Concurrency cap:** set `MAX_CONCURRENCY` (say 5) to cap how many copies run
+  at once. Leave it unset if `aws lambda get-account-settings` shows a total
+  limit of 10: AWS then refuses any reservation, and 10 is already the cap.
+- The deploying user also needs `cloudformation:DescribeStacks`,
+  `lambda:PutFunctionConcurrency` and `lambda:DeleteFunctionConcurrency` for
+  `revive`.
+
 ## The rollback drill (ADR-016)
 
 Proves that a bad release is stopped. Run **App Environment** with `drill`:

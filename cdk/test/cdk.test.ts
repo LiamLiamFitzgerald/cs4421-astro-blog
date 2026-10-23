@@ -1,7 +1,7 @@
 import * as cdk from 'aws-cdk-lib/core';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { AppServiceStack } from '../lib/app-service-stack';
-import { AppLambdaStack } from '../lib/app-lambda-stack';
+import { AppLambdaStack, KILL_SWITCH_CODE, ROOMS_READ_CAPACITY, ROOMS_WRITE_CAPACITY } from '../lib/app-lambda-stack';
 import { INDEX_REWRITE, StaticSiteStack } from '../lib/static-site-stack';
 
 describe('Feature: container service stack (ADR-001)', () => {
@@ -291,6 +291,89 @@ describe('Feature: static site serves the Catan app (ADR-018)', () => {
       },
     });
     template.hasOutput('StaticSiteUrl', {});
+  });
+});
+
+describe('Feature: rooms storage and cost ceilings (ADR-019)', () => {
+  const build = (props: { maxConcurrency?: number; budgetUsd?: number } = {}) =>
+    Template.fromStack(new AppLambdaStack(new cdk.App(), 'TestRooms', { env: { account: '111111111111', region: 'us-east-1' }, ...props }));
+  const template = build({ maxConcurrency: 5, budgetUsd: 5 });
+  const appFunction = (t: Template) =>
+    Object.values(t.findResources('AWS::Lambda::Function')).find(
+      (r) => (r as { Properties: { PackageType?: string } }).Properties.PackageType === 'Image',
+    ) as { Properties: Record<string, unknown> };
+
+  it('given rooms, one table keyed by pk and sk, provisioned inside the free allowance, with TTL', () => {
+    template.hasResourceProperties('AWS::DynamoDB::Table', {
+      KeySchema: [
+        { AttributeName: 'pk', KeyType: 'HASH' },
+        { AttributeName: 'sk', KeyType: 'RANGE' },
+      ],
+      ProvisionedThroughput: { ReadCapacityUnits: ROOMS_READ_CAPACITY, WriteCapacityUnits: ROOMS_WRITE_CAPACITY },
+      TimeToLiveSpecification: { AttributeName: 'expiresAt', Enabled: true },
+    });
+    expect(ROOMS_READ_CAPACITY + ROOMS_WRITE_CAPACITY).toBeLessThanOrEqual(25);
+  });
+
+  it('given the app, it is told the table name and may read and write it', () => {
+    const env = (appFunction(template).Properties['Environment'] as { Variables: Record<string, unknown> }).Variables;
+    expect(env['ROOMS_TABLE']).toBeDefined();
+    const policies = JSON.stringify(template.findResources('AWS::IAM::Policy'));
+    for (const action of ['dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:GetItem']) expect(policies).toContain(action);
+  });
+
+  it('given a cap, the app may run at most that many copies at once', () => {
+    expect(appFunction(template).Properties['ReservedConcurrentExecutions']).toBe(5);
+    expect(appFunction(build()).Properties['ReservedConcurrentExecutions']).toBeUndefined();
+  });
+
+  it('given a budget, the kill switch is wired: budget, topic it may publish to, function subscribed', () => {
+    template.hasResourceProperties('AWS::Budgets::Budget', {
+      Budget: Match.objectLike({ BudgetType: 'COST', TimeUnit: 'MONTHLY', BudgetLimit: { Amount: 5, Unit: 'USD' } }),
+      NotificationsWithSubscribers: [
+        Match.objectLike({
+          Notification: Match.objectLike({ NotificationType: 'ACTUAL', Threshold: 100 }),
+          Subscribers: [Match.objectLike({ SubscriptionType: 'SNS' })],
+        }),
+      ],
+    });
+    template.hasResourceProperties('AWS::SNS::TopicPolicy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([Match.objectLike({ Principal: { Service: 'budgets.amazonaws.com' }, Action: 'sns:Publish' })]),
+      }),
+    });
+    template.hasResourceProperties('AWS::SNS::Subscription', { Protocol: 'lambda' });
+    template.hasResourceProperties('AWS::Lambda::Function', { Runtime: 'nodejs22.x', Handler: 'index.handler' });
+  });
+
+  it('given the kill switch, it may only change the app function concurrency', () => {
+    const policies = Object.values(template.findResources('AWS::IAM::Policy')).map((p) => JSON.stringify(p));
+    const kill = policies.find((p) => p.includes('lambda:PutFunctionConcurrency'));
+    expect(kill).toBeDefined();
+    expect(kill).not.toContain('"Resource":"*"');
+  });
+
+  it('given no budget, there is no kill switch', () => {
+    const none = build();
+    none.resourceCountIs('AWS::Budgets::Budget', 0);
+    expect(Object.values(none.findResources('AWS::Lambda::Function'))).toHaveLength(1);
+  });
+
+  it('given the kill switch code, it sets concurrency to 0 and says how to turn the site back on', () => {
+    expect(KILL_SWITCH_CODE).toContain('ReservedConcurrentExecutions: 0');
+    expect(KILL_SWITCH_CODE).toContain('revive');
+  });
+
+  it('given throttled room reads or writes, an alarm notifies the topic', () => {
+    const alarms = Object.values(template.findResources('AWS::CloudWatch::Alarm')) as { Properties: Record<string, unknown> }[];
+    const throttled = alarms.find((a) => JSON.stringify(a.Properties['Metrics'] ?? '').includes('ReadThrottleEvents'));
+    expect(throttled).toBeDefined();
+    expect(JSON.stringify(throttled?.Properties['Metrics'])).toContain('WriteThrottleEvents');
+    expect((throttled?.Properties['AlarmActions'] as unknown[]).length).toBe(1);
+  });
+
+  it('given a deploy, outputs the table name', () => {
+    template.hasOutput('RoomsTable', {});
   });
 });
 
