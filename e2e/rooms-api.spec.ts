@@ -19,13 +19,14 @@ test.describe("Feature: the rooms API", () => {
 
     const board = await request.get(`/api/rooms?code=${code}`);
     expect(board.headers()["cache-control"]).toBe("no-store");
-    expect(await board.json()).toMatchObject({ code, version: 1, you: null, seats: [{ name: "Ana", joined: true }, { name: "Ben", joined: false }] });
+    expect(await board.json()).toMatchObject({ code, version: 9, you: null, seats: [{ name: "Ana", joined: true }, { name: "Ben", joined: false }] });
 
     const phone = await request.get(`/api/rooms?code=${code}`, { headers: { "x-room-token": token } });
     expect(await phone.json()).toMatchObject({ you: "Ana" });
 
-    const unchanged = await request.get(`/api/rooms?code=${code}&since=1`);
-    expect(await unchanged.json()).toEqual({ unchanged: true, version: 1 });
+    // Version 9: one event (the start) and one seat taken (1 × 8 + 1).
+    const unchanged = await request.get(`/api/rooms?code=${code}&since=9`);
+    expect(await unchanged.json()).toEqual({ unchanged: true, version: 9 });
   });
 
   test("given a seat token, a phone can only move for its own player", async ({ request }) => {

@@ -30,6 +30,12 @@ export const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ";
 export const CODE_LENGTH = 4;
 /** Rooms are deleted this long after they are created. */
 export const ROOM_LIFETIME_SECONDS = 48 * 60 * 60;
+/** More than the most seats a room can have, so the version can count seats and moves together. */
+const SEAT_SLOTS = 8;
+
+/** The view version: moves and joined seats in one number (see RoomView.version). */
+export const viewVersion = (moves: number, joined: number): number => moves * SEAT_SLOTS + joined;
+
 /** Attempts at a fresh code, and at an append that lost a race. */
 const ATTEMPTS = 5;
 
@@ -46,6 +52,10 @@ export type RoomError =
 /** What one screen is shown: the game as that viewer may see it, plus the room. */
 export interface RoomView {
   readonly code: string;
+  /**
+   * Changes whenever anything a screen shows changes: a move or a seat being
+   * taken. Screens send it back as `since` to ask "anything new?".
+   */
   readonly version: number;
   readonly seats: readonly { readonly name: string; readonly joined: boolean }[];
   /** Who this screen is playing as; null for the shared board. */
@@ -134,7 +144,7 @@ export async function runRoomCommand(
   code: string,
   token: string,
   command: PlayCommand,
-): Promise<Result<{ version: number }, RoomError>> {
+): Promise<Result<{ moves: number }, RoomError>> {
   const room = await deps.rooms.get(code);
   if (!room) return err({ code: "NO_SUCH_ROOM" });
   if (command.type === "StartGame") return err({ code: "NOT_ALLOWED", command: command.type });
@@ -148,7 +158,7 @@ export async function runRoomCommand(
     const decision = decide(state, withServerRandomness(command, state, deps.random));
     if (!decision.ok) return err({ code: "RULES", violation: decision.error });
     if (await deps.rooms.append(code, events.length, decision.value)) {
-      return ok({ version: events.length + decision.value.length });
+      return ok({ moves: events.length + decision.value.length });
     }
   }
   return err({ code: "BUSY" });
@@ -167,15 +177,18 @@ export async function getRoomView(
 ): Promise<Result<RoomView | { readonly unchanged: true; readonly version: number }, RoomError>> {
   const room = await deps.rooms.get(code);
   if (!room) return err({ code: "NO_SUCH_ROOM" });
-  if (since !== null && since === room.version) return ok({ unchanged: true, version: room.version });
+  const taken = await deps.rooms.seats(code);
+  const current = viewVersion(room.version, taken.size);
+  // Two small reads answer "nothing new"; the log is only read when it changed.
+  if (since !== null && since === current) return ok({ unchanged: true, version: current });
   const you = token ? await playerFor(deps, code, room.names, token) : null;
   if (token && !you) return err({ code: "BAD_TOKEN" });
-  const [events, taken] = await Promise.all([deps.rooms.events(code), deps.rooms.seats(code)]);
+  const events = await deps.rooms.events(code);
   const { state, history } = fold(events);
   const view = viewFor(state, you);
   return ok({
     code,
-    version: events.length,
+    version: viewVersion(events.length, taken.size),
     seats: room.names.map((name, i) => ({ name, joined: taken.has(i) })),
     you,
     state: view.state,

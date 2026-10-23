@@ -23,7 +23,7 @@ import {
 } from '../lib/app/play-view';
 import type { PlayCommand } from '../lib/games/catan-play/commands';
 import type { PlayEvent } from '../lib/games/catan-play/events';
-import { replayPlay } from '../lib/games/catan-play/evolve';
+import { evolve as evolveOne, replayPlay } from '../lib/games/catan-play/evolve';
 import {
 	actingPlayer,
 	buildOptions,
@@ -50,6 +50,80 @@ import { el, type Feedback, required } from './feedback';
 import { iconElement, type IconName } from './icons';
 
 const GAME_ID = 'local';
+
+/** What a play screen draws: the game as this screen may see it, and its log in words. */
+export interface PlaySnapshot {
+	readonly state: PlayState;
+	/** The event log in words, oldest first. */
+	readonly history: readonly string[];
+	/** Resource card counts, when other players' cards have been removed from `state` (rooms). */
+	readonly cardCounts?: Readonly<Record<string, number>>;
+	readonly devCardCounts?: Readonly<Record<string, number>>;
+}
+
+export type PlayOutcome =
+	| { readonly ok: true; readonly snapshot: PlaySnapshot; readonly announce: string }
+	| { readonly ok: false; readonly message: string };
+
+/**
+ * Where a play screen gets its game and sends its moves: this device's storage,
+ * or a shared room on the server (ADR-019). The screen holds no rules either way.
+ */
+export interface PlaySource {
+	snapshot(): Promise<PlaySnapshot>;
+	run(command: PlayCommand): Promise<PlayOutcome>;
+}
+
+/** Who is looking: everyone round one device, the shared board, or one player's phone. */
+export type Viewer = { readonly kind: 'device' } | { readonly kind: 'board' } | { readonly kind: 'seat'; readonly player: string };
+
+/** The log in words, folding once (each event is described with the state just after it). */
+export function describeLog(log: readonly PlayEvent[]): string[] {
+	let state = replayPlay([]);
+	return log.map((event) => {
+		state = evolveOne(state, event);
+		return describePlayEvent(event, state);
+	});
+}
+
+/** What a screen reader hears after a move: what happened, then whose input is needed. */
+export function announcement(state: PlayState, added: readonly PlayEvent[]): string {
+	const parts = added.map((event) =>
+		event.type === 'DiceRolled' && state.lastRoll
+			? describeRoll(state.lastRoll, state.players)
+			: `${describePlayEvent(event, state)}.`,
+	);
+	const next = actingPlayer(state);
+	const step = expectedStep(state);
+	if (state.winner) parts.push(`${state.winner} wins with ${points(state, state.winner)} points.`);
+	else if (next && step && step !== 'roll' && step !== 'build-or-end' && step !== 'place-settlement' && step !== 'place-road') {
+		parts.push(`${next}: ${describeStep(step)}`);
+	}
+	else if (next && step && added.some((e) => e.type === 'TurnEnded' || e.type === 'SetupRoadPlaced')) {
+		parts.push(`${next}'s turn. ${describeStep(step)}`);
+	}
+	return parts.join(' ');
+}
+
+/** A game kept in this browser's storage, played round one device. */
+function localSource(store: EventStore<PlayEvent>): PlaySource {
+	return {
+		async snapshot() {
+			const log = await store.load(GAME_ID);
+			return { state: replayPlay(log), history: describeLog(log) };
+		},
+		async run(command) {
+			const result = await executePlayCommand(store, GAME_ID, command);
+			if (!result.ok) return { ok: false, message: describePlayViolation(result.error) };
+			const log = await store.load(GAME_ID);
+			return {
+				ok: true,
+				snapshot: { state: result.value.state, history: describeLog(log) },
+				announce: announcement(result.value.state, result.value.events),
+			};
+		},
+	};
+}
 
 export interface PlayView {
 	/** True when a played game is stored. */
@@ -99,6 +173,45 @@ export function createPlayView(
 	feedback: Feedback,
 	show: (screen: 'play') => void,
 ): PlayView {
+	const screen = mountPlay(localSource(store), feedback, show, { kind: 'device' });
+	return {
+		async isActive() {
+			return (await loadPlay(store, GAME_ID)).started;
+		},
+		render: screen.render,
+		async start(players, seed) {
+			const message = await screen.run({ type: 'StartGame', players, seed });
+			screen.forget();
+			return message;
+		},
+		async players() {
+			return (await loadPlay(store, GAME_ID)).players;
+		},
+		clear() {
+			store.clear?.(GAME_ID);
+			screen.forget();
+		},
+	};
+}
+
+export interface PlayScreen {
+	/** Draws the game as it is now. */
+	render(): Promise<void>;
+	/** Sends a move; returns the reason when it is refused. */
+	run(command: PlayCommand): Promise<string | null>;
+	/** Shows a game that changed elsewhere (another phone moved), announcing what is new. */
+	update(snapshot: PlaySnapshot): Promise<void>;
+	/** Drops any half-finished choice (build mode, a message). */
+	forget(): void;
+}
+
+/** Draws a played game into the #play markup and wires its controls to `source`. */
+export function mountPlay(
+	source: PlaySource,
+	feedback: Feedback,
+	show: (screen: 'play') => void,
+	viewer: Viewer,
+): PlayScreen {
 	const section = required<HTMLElement>('#play');
 	const board = required<SVGSVGElement>('#play-board');
 	const boardList = required<HTMLOListElement>('#play-board-list');
@@ -111,6 +224,18 @@ export function createPlayView(
 
 	let mode: Piece | null = null;
 	let busy = false;
+	/** The snapshot being shown, for card counts that are not in the state. */
+	let shown: PlaySnapshot | null = null;
+	/** Whether this screen may make the move the game is waiting for. */
+	const canAct = (state: PlayState): boolean =>
+		viewer.kind === 'device' || (viewer.kind === 'seat' && actingPlayer(state) === viewer.player && !state.winner);
+	/** Whether this screen may see `player`'s cards. */
+	const seesCardsOf = (state: PlayState, player: string): boolean =>
+		viewer.kind === 'device' || state.winner !== null || (viewer.kind === 'seat' && viewer.player === player);
+	const cardCount = (state: PlayState, player: string): number =>
+		shown?.cardCounts?.[player] ?? handSize(state.hands[player] ?? emptyHand);
+	const devCardCount = (state: PlayState, player: string): number =>
+		shown?.devCardCounts?.[player] ?? (state.devCards[player] ?? []).length;
 	let lastMessage = '';
 	let rolledJustNow = false;
 	/** What the last action changed, so the next render can show it briefly. */
@@ -145,23 +270,21 @@ export function createPlayView(
 		busy = true;
 		section.setAttribute('aria-busy', 'true');
 		try {
-			const before = replayPlay(await store.load(GAME_ID));
-			const result = await executePlayCommand(store, GAME_ID, command);
+			const before = (await source.snapshot()).state;
+			const result = await source.run(command);
 			if (!result.ok) {
-				const message = describePlayViolation(result.error);
-				lastMessage = message;
-				feedback.announce(message);
+				lastMessage = result.message;
+				feedback.announce(result.message);
 				await render();
-				return message;
+				return result.message;
 			}
 			feedback.clearFailure();
 			lastMessage = '';
 			mode = null;
 			rolledJustNow = command.type === 'RollDice';
-			const { state, events: added } = result.value;
-			fresh = changes(before, state);
-			await render();
-			feedback.announce(announcement(state, added));
+			fresh = changes(before, result.snapshot.state);
+			await render(result.snapshot);
+			feedback.announce(result.announce);
 			return null;
 		} catch (error) {
 			feedback.fail(error, `play:${command.type}`, async () => {
@@ -173,24 +296,6 @@ export function createPlayView(
 			busy = false;
 			section.removeAttribute('aria-busy');
 		}
-	}
-
-	function announcement(state: PlayState, added: readonly PlayEvent[]): string {
-		const parts = added.map((event) =>
-			event.type === 'DiceRolled' && state.lastRoll
-				? describeRoll(state.lastRoll, state.players)
-				: `${describePlayEvent(event, state)}.`,
-		);
-		const next = actingPlayer(state);
-		const step = expectedStep(state);
-		if (state.winner) parts.push(`${state.winner} wins with ${points(state, state.winner)} points.`);
-		else if (next && step && step !== 'roll' && step !== 'build-or-end' && step !== 'place-settlement' && step !== 'place-road') {
-			parts.push(`${next}: ${describeStep(step)}`);
-		}
-		else if (next && step && added.some((e) => e.type === 'TurnEnded' || e.type === 'SetupRoadPlaced')) {
-			parts.push(`${next}'s turn. ${describeStep(step)}`);
-		}
-		return parts.join(' ');
 	}
 
 	// ------------------------------------------------------------ board
@@ -213,6 +318,7 @@ export function createPlayView(
 		}));
 
 		let targets: BoardOverlay['targets'];
+		const acting = canAct(state);
 		const vertexTargets = (ids: number[], verb: string, make: (v: number) => PlayCommand) => ({
 			kind: 'vertex' as const,
 			ids,
@@ -225,7 +331,9 @@ export function createPlayView(
 			label: (e: number) => `Build a road ${describeEdge(state.board, e)}`,
 			onPick: (e: number) => void run(make(e)),
 		});
-		if (step === 'place-settlement') {
+		if (!acting) {
+			// Another screen makes this move; this one only watches.
+		} else if (step === 'place-settlement') {
 			targets = vertexTargets(legalSetupSettlements(state), 'Place a settlement', (vertex) => ({ type: 'PlaceSetupSettlement', player, vertex }));
 		} else if (step === 'place-road') {
 			targets = edgeTargets(legalSetupRoads(state), (edge) => ({ type: 'PlaceSetupRoad', player, edge }));
@@ -239,7 +347,7 @@ export function createPlayView(
 			if (mode === 'city') targets = vertexTargets(spots, 'Upgrade to a city', (vertex) => ({ type: 'BuildCity', player, vertex }));
 		}
 		const hexTargets =
-			step === 'move-robber'
+			step === 'move-robber' && acting
 				? {
 						keys: legalRobberHexes(state),
 						label: (key: string) => `Move the robber to ${describeHex(state.board, key)}`,
@@ -252,6 +360,7 @@ export function createPlayView(
 
 	function boardInstruction(state: PlayState): string {
 		const step = expectedStep(state);
+		if (!canAct(state)) return '';
 		if (step === 'place-settlement') return 'Choose a highlighted corner for the settlement.';
 		if (step === 'place-road') return 'Choose a highlighted edge for the road.';
 		if (step === 'move-robber') return 'Choose a highlighted hex for the robber. It cannot stay where it is.';
@@ -348,6 +457,14 @@ export function createPlayView(
 			parts.push(message);
 		}
 
+		if (!canAct(state)) {
+			if (!state.winner && actor) {
+				const waiting = el('p', 'turn__waiting', viewer.kind === 'seat' ? `Waiting for ${actor}.` : `Waiting for ${actor} to play on their phone.`);
+				parts.push(waiting);
+			}
+			return parts;
+		}
+
 		const actions = el('div', 'turn__actions');
 		if (step === 'discard' && state.pending?.kind === 'discard') {
 			actions.append(discardForm(state, actor, state.pending.owed[actor] ?? 0));
@@ -357,7 +474,7 @@ export function createPlayView(
 			group.setAttribute('role', 'group');
 			group.setAttribute('aria-label', 'Steal a card');
 			for (const victim of state.pending.victims) {
-				const cards = handSize(state.hands[victim] ?? emptyHand);
+				const cards = cardCount(state, victim);
 				const b = button(`Steal from ${victim} (${cards} card${cards === 1 ? '' : 's'})`, null, 'button');
 				// The card is chosen at random here and checked by the rules (ADR-011).
 				b.addEventListener('click', () => void run({ type: 'StealFrom', player, victim, pick: randomBelow(cards) }));
@@ -684,7 +801,8 @@ export function createPlayView(
 		const score = el('p', 'player__score');
 		// Others see only visible points; the player whose input is needed also sees their hidden ones.
 		const vp = visiblePoints(state, player);
-		const hidden = isCurrent || state.winner === player ? hiddenPoints(state, player) : 0;
+		const ownsScreen = viewer.kind === 'device' ? isCurrent : seesCardsOf(state, player);
+		const hidden = ownsScreen || state.winner === player ? hiddenPoints(state, player) : 0;
 		score.append(el('strong', 'numeric', String(vp + hidden)), el('span', undefined, ` of ${WINNING_POINTS} points`));
 		if (hidden > 0) score.append(el('span', 'player__hidden', ` (${hidden} from hidden cards)`));
 		head.append(badge, el('h3', 'player__name', player), score);
@@ -698,7 +816,7 @@ export function createPlayView(
 		for (let i = 0; i < WINNING_POINTS; i++) meter.append(el('span', i < vp + hidden ? 'meter__step meter__step--on' : 'meter__step'));
 
 		const hand = state.hands[player] ?? emptyHand;
-		const cards = el('dl', 'hand');
+		let cards: HTMLElement = el('dl', 'hand');
 		cards.setAttribute('aria-label', `${player}'s resources`);
 		const gained = fresh.gains[player] ?? {};
 		for (const r of RESOURCES) {
@@ -714,6 +832,12 @@ export function createPlayView(
 			}
 			item.append(value, el('dt', 'hand__name', r));
 			cards.append(item);
+		}
+		if (!seesCardsOf(state, player)) {
+			// Rooms (ADR-019): other players' cards are private; only how many is public.
+			const count = cardCount(state, player);
+			cards = el('p', 'hand-count numeric', `${count} resource card${count === 1 ? '' : 's'}`);
+			cards.setAttribute('aria-label', `${player} holds ${count} resource card${count === 1 ? '' : 's'}`);
 		}
 
 		const left = piecesLeft(state, player);
@@ -742,10 +866,10 @@ export function createPlayView(
 			a.append(iconElement('army'), document.createTextNode(`Largest Army (${state.knightsPlayed[player] ?? 0})`));
 			awards.append(a);
 		}
-		const cardCount = (state.devCards[player] ?? []).length;
+		const devCards = devCardCount(state, player);
 		const knights = state.knightsPlayed[player] ?? 0;
 		const extras = el('span', 'supply__item');
-		extras.append(iconElement('card'), document.createTextNode(`${cardCount} card${cardCount === 1 ? '' : 's'}`));
+		extras.append(iconElement('card'), document.createTextNode(`${devCards} card${devCards === 1 ? '' : 's'}`));
 		const army = el('span', 'supply__item');
 		army.append(iconElement('knight'), document.createTextNode(`${knights} knight${knights === 1 ? '' : 's'} played`));
 		supply.append(extras, army);
@@ -756,9 +880,9 @@ export function createPlayView(
 
 	// ------------------------------------------------------------ render
 
-	async function render(): Promise<void> {
-		const log = await store.load(GAME_ID);
-		const state = replayPlay(log);
+	async function render(snapshot?: PlaySnapshot): Promise<void> {
+		shown = snapshot ?? (await source.snapshot());
+		const { state, history } = shown;
 		if (!state.started || !state.board) return;
 		show('play');
 
@@ -779,13 +903,8 @@ export function createPlayView(
 			);
 		}
 
-		events.replaceChildren(
-			...log
-				.map((event, i) => describePlayEvent(event, replayPlay(log.slice(0, i + 1))))
-				.reverse()
-				.map((text) => el('li', undefined, text)),
-		);
-		eventCount.textContent = String(log.length);
+		events.replaceChildren(...[...history].reverse().map((text) => el('li', undefined, text)));
+		eventCount.textContent = String(history.length);
 		rolledJustNow = false;
 		fresh = { vertices: new Set(), edges: new Set(), gains: {} };
 	}
@@ -798,20 +917,17 @@ export function createPlayView(
 	});
 
 	return {
-		async isActive() {
-			return (await loadPlay(store, GAME_ID)).started;
+		render: () => render(),
+		run,
+		async update(snapshot) {
+			const before = shown;
+			if (before) fresh = changes(before.state, snapshot.state);
+			rolledJustNow = before !== null && JSON.stringify(snapshot.state.lastRoll) !== JSON.stringify(before.state.lastRoll);
+			await render(snapshot);
+			const added = snapshot.history.slice(before?.history.length ?? snapshot.history.length);
+			if (added.length > 0) feedback.announce(`${added.join('. ')}.`);
 		},
-		render,
-		async start(players, seed) {
-			const message = await run({ type: 'StartGame', players, seed });
-			lastMessage = '';
-			return message;
-		},
-		async players() {
-			return (await loadPlay(store, GAME_ID)).players;
-		},
-		clear() {
-			store.clear?.(GAME_ID);
+		forget() {
 			mode = null;
 			lastMessage = '';
 		},

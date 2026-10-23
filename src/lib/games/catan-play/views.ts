@@ -32,8 +32,10 @@ export function viewFor(state: PlayState, viewer: PlayerId | null): ViewerState 
     const held = state.devCards[player] ?? [];
     cardCounts[player] = handSize(hand);
     devCardCounts[player] = held.length;
-    hands[player] = player === viewer ? hand : emptyHand;
-    devCards[player] = player === viewer ? held : [];
+    // Once the game is over every card is shown, as players do at the table.
+    const sees = player === viewer || state.winner !== null;
+    hands[player] = sees ? hand : emptyHand;
+    devCards[player] = sees ? held : [];
   }
   return {
     state: { ...state, hands, devCards, deck: state.deck.map(() => "knight" as const) },

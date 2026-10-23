@@ -16,6 +16,7 @@ import {
   type RoomDeps,
   type RoomView,
   runRoomCommand,
+  viewVersion,
 } from "./rooms";
 
 /** Deterministic dependencies: random values from a queue, then 0. */
@@ -138,7 +139,7 @@ describe("Feature: playing from a phone", () => {
     const { d, code, ana } = await seatedRoom();
     const { player, vertex } = await firstCorner(d, code);
     expect(player).toBe("Ana");
-    expect(unwrap(await runRoomCommand(d, code, ana, { type: "PlaceSetupSettlement", player, vertex }))).toEqual({ version: 2 });
+    expect(unwrap(await runRoomCommand(d, code, ana, { type: "PlaceSetupSettlement", player, vertex }))).toEqual({ moves: 2 });
     const state = replayPlay(await d.rooms.events(code));
     expect(state.buildings[vertex]).toEqual({ player: "Ana", kind: "settlement" });
   });
@@ -225,7 +226,7 @@ describe("Feature: playing from a phone", () => {
       },
     };
     expect(unwrap(await runRoomCommand({ ...d, rooms: racing }, code, ana, { type: "PlaceSetupSettlement", player, vertex }))).toEqual({
-      version: 2,
+      moves: 2,
     });
   });
 
@@ -258,7 +259,7 @@ describe("Feature: what each screen is shown", () => {
   it("given the board (no token), shows public information and the seats", async () => {
     const { d, code } = await withCards();
     const view = asView(unwrap(await getRoomView(d, code, null)));
-    expect(view).toMatchObject({ code, version: 1, you: null, seats: [{ name: "Ana", joined: true }, { name: "Ben", joined: true }] });
+    expect(view).toMatchObject({ code, version: viewVersion(1, 2), you: null, seats: [{ name: "Ana", joined: true }, { name: "Ben", joined: true }] });
     expect(view.history).toEqual(["Game started: Ana, Ben"]);
     expect(Object.values(view.state.hands).every((h) => Object.values(h).every((n) => n === 0))).toBe(true);
     expect(new Set(view.state.deck)).toEqual(new Set(["knight"]));
@@ -281,8 +282,24 @@ describe("Feature: what each screen is shown", () => {
 
   it("given the screen is up to date, answers with only the version", async () => {
     const { d, code } = await withCards();
-    expect(unwrap(await getRoomView(d, code, null, 1))).toEqual({ unchanged: true, version: 1 });
+    const v = viewVersion(1, 2);
+    expect(unwrap(await getRoomView(d, code, null, v))).toEqual({ unchanged: true, version: v });
     expect("unchanged" in unwrap(await getRoomView(d, code, null, 0))).toBe(false);
+  });
+
+  it("given a seat is taken, the version changes so the board redraws who has joined", async () => {
+    const d = deps();
+    const { code } = unwrap(await createRoom(d, ["Ana", "Ben"]));
+    const before = asView(unwrap(await getRoomView(d, code, null))).version;
+    unwrap(await joinSeat(d, code, 0));
+    const after = unwrap(await getRoomView(d, code, null, before));
+    expect("unchanged" in after).toBe(false);
+  });
+
+  it("counts moves and seats in one version without overlap", () => {
+    expect(viewVersion(0, 0)).toBe(0);
+    expect(viewVersion(1, 0)).toBeGreaterThan(viewVersion(0, 6));
+    expect(viewVersion(2, 1)).not.toBe(viewVersion(1, 2));
   });
 
   it("given a forged token, refuses rather than showing the board", async () => {

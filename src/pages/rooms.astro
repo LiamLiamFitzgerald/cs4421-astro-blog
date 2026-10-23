@@ -1,0 +1,76 @@
+---
+import Icon from '../components/Icon.astro';
+import PlayArea from '../components/PlayArea.astro';
+import Layout from '../layouts/Layout.astro';
+import '../styles/board.css';
+import '../styles/catan.css';
+---
+
+<Layout title="Rooms" description="Put the board on one screen and play from your phones.">
+	<div class="scoreboard rooms">
+		<p id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+
+		<div class="toolbar">
+			<h1>Rooms</h1>
+		</div>
+
+		<div id="room-bar" class="panel room-bar" hidden></div>
+		<div id="failure" class="notice notice--error" role="alert" hidden></div>
+
+		<div id="no-server" class="notice" hidden>
+			<Icon name="info" />
+			<div class="notice__body">
+				<p class="notice__title">Rooms need the server version of the site</p>
+				<p>
+					This copy of the site is plain files, so there is nothing to keep a shared game. You can still
+					<a href="/catan">play on one device</a>.
+				</p>
+			</div>
+		</div>
+
+		<p id="loading" class="hint" role="status">Loading the room…</p>
+		<noscript>
+			<div class="notice notice--error">
+				<div class="notice__body"><p>Rooms need JavaScript. Turn it on and reload.</p></div>
+			</div>
+		</noscript>
+
+		<!-- Host: create a room (src/ui/rooms.ts). -->
+		<section id="room-host" class="setup" aria-labelledby="host-title" hidden>
+			<form id="room-form" class="panel setup__form" novalidate>
+				<h2 id="host-title">Start a room</h2>
+				<p class="hint">
+					Open this page on the screen everyone can see. Enter 2 to 6 names in seating order; each
+					player then joins on their own phone with the room code.
+				</p>
+				<ol class="player-fields">
+					{
+						[1, 2, 3, 4, 5, 6].map((n) => (
+							<li class="player-field">
+								<span class={`seat seat--${n}`} aria-hidden="true">{n}</span>
+								<input class="input" name="player" aria-label={`Player ${n}`} maxlength="20" autocomplete="off" />
+							</li>
+						))
+					}
+				</ol>
+				<button class="button button--primary setup__start" type="submit">Create room</button>
+			</form>
+		</section>
+
+		<!-- Phone: pick a seat. -->
+		<section id="room-join" class="panel room-join" aria-labelledby="join-title" hidden>
+			<h2 id="join-title">Who are you?</h2>
+			<p class="hint">Pick your seat. This phone then shows your cards and your controls.</p>
+			<ol id="seat-list" class="seat-list"></ol>
+		</section>
+
+		<PlayArea />
+	</div>
+</Layout>
+
+<script>
+	import { reportError } from '../ui/report-error';
+	import { startRooms } from '../ui/rooms';
+
+	startRooms(reportError);
+</script>

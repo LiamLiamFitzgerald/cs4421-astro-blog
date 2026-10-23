@@ -51,6 +51,12 @@ describe("Feature: what each screen may see", () => {
     expect(view.robber).toBe(state.robber);
   });
 
+  it("given the game is over, shows everyone's cards, as at the table", () => {
+    const view = viewFor({ ...started(), winner: "ana" }, null);
+    expect(view.state.hands["ben"]).toEqual(hand({ wool: 4 }));
+    expect(view.state.devCards["ana"]).toHaveLength(1);
+  });
+
   it("does not change the state it was given", () => {
     const state = started();
     const before = JSON.stringify(state);
