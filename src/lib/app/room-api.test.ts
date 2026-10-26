@@ -9,10 +9,12 @@ import type { RoomDeps } from "./rooms";
 function setup(limit = 1000) {
   let n = 0;
   let r = 0;
+  // One clock for the service and the store, so rooms never expire mid-test whatever today's date is.
+  const now = () => new Date("2026-10-23T18:00:00Z");
   const deps: RoomDeps = {
-    rooms: new MemoryRoomRepository(),
+    rooms: new MemoryRoomRepository(now),
     random: (max) => r++ % max,
-    now: () => new Date("2026-10-23T18:00:00Z"),
+    now,
     newToken: () => `t${++n}`,
     hashToken: (t) => `#${t}`,
   };
