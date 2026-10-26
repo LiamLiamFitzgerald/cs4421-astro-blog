@@ -73,6 +73,24 @@
 	--seat-5: #6b4a8c;
 	--seat-6: #7a5633;
 
+	/* Actions (ADR-020): colour says what kind of action a button is. Each pair
+	   (fill, text) passes WCAG AA; every button also has an icon and a label. */
+	--action-roll: var(--color-wheat);
+	--action-roll-strong: #a87d1c;
+	--action-roll-hover: #ddb653;
+	--action-roll-ink: var(--color-ink);
+	--action-build: var(--color-forest);
+	--action-build-strong: var(--color-forest-strong);
+	--action-trade: var(--color-sea-deep);
+	--action-trade-strong: #1f4252;
+	--action-card: var(--seat-5);
+	--action-card-strong: #553a70;
+	--action-end: var(--color-terracotta-strong);
+	--action-end-strong: #6f3726;
+	--action-rob: var(--color-danger);
+	--action-rob-strong: var(--color-danger-strong);
+	--action-glow: rgb(201 154 46 / 0.55);
+
 	/* Type: Alegreya for headings, Alegreya Sans for the interface. Scale ratio 1.25. */
 	--font-heading: var(--font-display), Georgia, serif;
 	--font-body: var(--font-ui), system-ui, sans-serif;

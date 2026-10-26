@@ -138,15 +138,27 @@ test.describe("Feature: taking turns", () => {
     await expect(player(page, "Ana").locator(".supply")).toContainText("12 roads");
   });
 
-  test("given Ana cannot afford a city, the button is disabled and says what is missing", async ({ page }) => {
+  test("given Ana cannot afford a city, it is not offered at all (ADR-020)", async ({ page }) => {
     await startPlay(page);
     await playOpening(page);
     await nextDice(page, 2, 1);
     await page.getByRole("button", { name: "Roll the dice" }).click();
 
-    const city = page.getByRole("button", { name: /Build city/ });
-    await expect(city).toBeDisabled();
-    await expect(city).toContainText("Needs");
+    await expect(page.getByRole("button", { name: "End turn" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Build city/ })).toHaveCount(0);
+    await expect(page.locator("#play-turn")).not.toContainText("Needs");
+  });
+
+  test("given every action on the turn panel, each can actually be taken", async ({ page }) => {
+    await startPlay(page);
+    await playOpening(page);
+    await nextDice(page, 2, 1);
+    await page.getByRole("button", { name: "Roll the dice" }).click();
+
+    // The player-trade form is the one exception: Offer trade waits for the cards to be chosen.
+    const actions = page.locator("#play-turn .builds button.action, #play-turn .trade button.action, #play-turn .cards button.action, #play-turn .turn__end");
+    await expect(actions.first()).toBeVisible();
+    for (const b of await actions.all()) await expect(b).toBeEnabled();
   });
 
   test("given Escape, build mode is cancelled", async ({ page }) => {
@@ -262,7 +274,7 @@ test.describe("Feature: development cards", () => {
 
     await expect(turnTitle(page)).toHaveText(`${holder}'s turn`);
     const cards = page.getByRole("region", { name: `${holder}'s development cards` });
-    await expect(cards).toContainText("Knight");
+    await expect(cards).toContainText("Play knight");
     await cards.getByRole("button", { name: "Play knight" }).click();
 
     await expect(page.locator("#play-turn")).toContainText("Move the robber");
@@ -275,15 +287,15 @@ test.describe("Feature: development cards", () => {
     await expect(player(page, holder).locator(".supply")).toContainText(/[1-9] knights? played/);
   });
 
-  test("given Buy card without the resources, it is disabled and says what is missing", async ({ page }) => {
+  test("given Buy card is offered, the player can afford it; otherwise it is not shown", async ({ page }) => {
     await startPlay(page);
     await playOpening(page);
     await nextDice(page, 2, 1);
     await page.getByRole("button", { name: "Roll the dice" }).click();
 
+    await expect(page.getByRole("button", { name: "End turn" })).toBeVisible();
     const buy = page.getByRole("button", { name: /Buy card/ });
-    await expect(buy).toBeVisible();
-    if (await buy.isDisabled()) await expect(buy).toContainText("Needs");
+    if ((await buy.count()) > 0) await expect(buy).toBeEnabled();
   });
 });
 
@@ -305,7 +317,7 @@ test.describe("Feature: trading between players", () => {
     await nextDice(page, 2, 1);
     await page.getByRole("button", { name: "Roll the dice" }).click();
 
-    await page.locator("summary", { hasText: "Offer a trade to another player" }).click();
+    await page.locator("summary", { hasText: "Trade with a player" }).click();
     const offer = page.locator(".offer__form");
     await expect(offer.getByRole("button", { name: "Offer trade" })).toBeDisabled();
     await offer.getByRole("button", { name: "You give: one more lumber" }).click();
