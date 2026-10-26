@@ -45,6 +45,7 @@ import type { PlayState } from '../lib/games/catan-play/state';
 import { TOPOLOGY } from '../lib/games/catan-play/topology';
 import { WINNING_POINTS } from '../lib/games/catan/score';
 import { type BoardOverlay, renderBoard } from './board';
+import { describeEffect, detectEffects, ranking } from '../lib/app/play-effects';
 import { el, type Feedback, required } from './feedback';
 import { iconElement, type IconName } from './icons';
 
@@ -220,6 +221,39 @@ export function mountPlay(
 	const winner = required<HTMLElement>('#play-winner');
 	const events = required<HTMLOListElement>('#play-events');
 	const eventCount = required<HTMLElement>('#play-event-count');
+	const banner = required<HTMLElement>('#play-banner');
+	const boardFigure = board.closest('figure');
+	let bannerTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Leaderboard ranks at the last render, to highlight a player moving up. */
+	let lastRanks = new Map<string, number>();
+
+	/** Replays a CSS animation on an element by toggling its class (ADR-020). */
+	const pulse = (node: Element | null | undefined, className: string) => {
+		if (!node) return;
+		node.classList.remove(className);
+		void (node as HTMLElement).offsetWidth; // restart the animation
+		node.classList.add(className);
+		node.addEventListener('animationend', () => node.classList.remove(className), { once: true });
+	};
+
+	/** Shows the big moments between two views: a banner, and the board or a row reacting. */
+	function celebrate(before: PlaySnapshot | null, after: PlaySnapshot) {
+		const effects = detectEffects(before, after);
+		const top = effects[0];
+		if (!top) return;
+		const words = describeEffect(top);
+		banner.replaceChildren(iconElement(words.icon as IconName), document.createTextNode(words.text));
+		banner.className = `banner banner--${top.kind}`;
+		banner.hidden = false;
+		pulse(banner, 'banner--show');
+		if (bannerTimer) clearTimeout(bannerTimer);
+		bannerTimer = setTimeout(() => (banner.hidden = true), 2600);
+		for (const effect of effects) {
+			if (effect.kind === 'robber' || effect.kind === 'seven') pulse(boardFigure, 'board--shake');
+			if (effect.kind === 'stolen') pulse(roster.querySelector(`[data-player="${CSS.escape(effect.victim)}"]`), 'row--robbed');
+			if (effect.kind === 'lead' || effect.kind === 'win') pulse(roster.querySelector(`[data-player="${CSS.escape(effect.player)}"]`), 'row--cheer');
+		}
+	}
 
 	let mode: Piece | null = null;
 	let busy = false;
@@ -269,7 +303,8 @@ export function mountPlay(
 		busy = true;
 		section.setAttribute('aria-busy', 'true');
 		try {
-			const before = (await source.snapshot()).state;
+			const beforeView = await source.snapshot();
+			const before = beforeView.state;
 			const result = await source.run(command);
 			if (!result.ok) {
 				lastMessage = result.message;
@@ -283,6 +318,7 @@ export function mountPlay(
 			rolledJustNow = command.type === 'RollDice';
 			fresh = changes(before, result.snapshot.state);
 			await render(result.snapshot);
+			celebrate(beforeView, result.snapshot);
 			feedback.announce(result.announce);
 			return null;
 		} catch (error) {
@@ -768,6 +804,7 @@ export function mountPlay(
 		const seat = seatOf(state, player);
 		const isCurrent = actingPlayer(state) === player && !state.winner;
 		const row = el('article', `play-player seat-color--${seat}`);
+		row.dataset.player = player;
 		row.classList.toggle('play-player--current', isCurrent);
 		row.classList.toggle('player--winner', state.winner === player);
 		row.setAttribute('aria-label', `${player}${isCurrent ? ', playing now' : ''}`);
@@ -855,6 +892,48 @@ export function mountPlay(
 		return row;
 	}
 
+	/** The shared board's leaderboard (ADR-020): ranked, big numbers, awards at a glance. */
+	function leaderboard(state: PlayState): HTMLElement {
+		const section = el('section', 'leaderboard');
+		section.setAttribute('aria-labelledby', 'leaderboard-title');
+		const title = el('h2', 'leaderboard__title', 'Leaderboard');
+		title.id = 'leaderboard-title';
+		const list = el('ol', 'leaderboard__list');
+		const ranks = ranking(state);
+		const acting = actingPlayer(state);
+		for (const { player, points: score, rank } of ranks) {
+			const seat = seatOf(state, player);
+			const item = el('li', `leaderboard__row seat-color--${seat} leaderboard__row--rank-${Math.min(rank, 4)}`);
+			item.dataset.player = player;
+			const previous = lastRanks.get(player);
+			if (previous !== undefined && rank < previous) item.classList.add('leaderboard__row--up');
+			item.classList.toggle('leaderboard__row--acting', acting === player && !state.winner);
+			const badge = el('span', 'leaderboard__rank numeric', String(rank));
+			badge.setAttribute('aria-label', `Rank ${rank}`);
+			const name = el('span', 'leaderboard__name');
+			name.append(el('span', `seat seat--${seat}`, String(seat)), document.createTextNode(` ${player}`));
+			if (acting === player && !state.winner) name.append(el('span', 'leaderboard__now', 'playing'));
+			const meter = el('span', 'leaderboard__meter');
+			meter.setAttribute('aria-hidden', 'true');
+			const fill = el('span', 'leaderboard__fill');
+			fill.style.width = `${Math.min(100, (score / WINNING_POINTS) * 100)}%`;
+			meter.append(fill);
+			const extras = el('span', 'leaderboard__extras');
+			if (state.winner === player) extras.append(iconElement('crown', 'Winner'));
+			if (state.longestRoad === player) extras.append(iconElement('trophy', 'Longest Road'));
+			if (state.largestArmy === player) extras.append(iconElement('army', 'Largest Army'));
+			const cards = cardCount(state, player);
+			extras.append(el('span', 'leaderboard__cards numeric', `${cards} card${cards === 1 ? '' : 's'}`));
+			const points_ = el('span', 'leaderboard__points numeric', String(score));
+			points_.setAttribute('aria-label', `${score} of ${WINNING_POINTS} points`);
+			item.append(badge, name, points_, meter, extras);
+			list.append(item);
+		}
+		lastRanks = new Map(ranks.map((r) => [r.player, r.rank]));
+		section.append(title, list);
+		return section;
+	}
+
 	// ------------------------------------------------------------ render
 
 	async function render(snapshot?: PlaySnapshot): Promise<void> {
@@ -870,7 +949,7 @@ export function mountPlay(
 		}
 		boardHint.textContent = boardInstruction(state);
 		turn.replaceChildren(...turnPanel(state));
-		roster.replaceChildren(...state.players.map((p) => playerRow(state, p)));
+		roster.replaceChildren(...(viewer.kind === 'board' ? [leaderboard(state)] : state.players.map((p) => playerRow(state, p))));
 
 		winner.hidden = state.winner === null;
 		if (state.winner) {
@@ -901,6 +980,7 @@ export function mountPlay(
 			if (before) fresh = changes(before.state, snapshot.state);
 			rolledJustNow = before !== null && JSON.stringify(snapshot.state.lastRoll) !== JSON.stringify(before.state.lastRoll);
 			await render(snapshot);
+			celebrate(before, snapshot);
 			const added = snapshot.history.slice(before?.history.length ?? snapshot.history.length);
 			if (added.length > 0) feedback.announce(`${added.join('. ')}.`);
 		},
