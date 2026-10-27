@@ -29,7 +29,7 @@ export default defineConfig({
     command: "node dist/server/entry.mjs",
     url: `http://127.0.0.1:${PORT}/api/health`,
     // Rooms push through the local WebSocket stand-in (ADR-019), as API Gateway does in AWS.
-    env: { HOST: "127.0.0.1", PORT: String(PORT), ROOMS_PUSH_LOCAL_PORT: String(PORT + 1), ROOMS_CREATE_LIMIT: "1000" },
+    env: { HOST: "127.0.0.1", PORT: String(PORT), ROOMS_PUSH_LOCAL_PORT: String(PORT + 1), ROOMS_LIMIT_MULTIPLIER: "100" },
     reuseExistingServer: !process.env.CI,
   },
 });
