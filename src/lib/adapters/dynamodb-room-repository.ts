@@ -1,11 +1,11 @@
-import type { RoomRecord, RoomRepository } from "../app/room-repository";
+import type { RoomRecord, RoomRepository, SeatRecord } from "../app/room-repository";
 import type { PlayEvent } from "../games/catan-play/events";
 
 /**
  * One DynamoDB table for every room (ADR-019):
  *
- *   pk = ROOM#<code>   sk = META        names, version, createdAt, expiresAt
- *                      sk = SEAT#<n>    tokenHash
+ *   pk = ROOM#<code>   sk = META        seats, hostTokenHash, version, createdAt, expiresAt
+ *                      sk = SEAT#<n>    name, tokenHash
  *                      sk = EVT#<seq>   event (seq zero-padded, so sk order is log order)
  *
  * Every item carries expiresAt, so TTL removes the whole room. An append is one
@@ -24,6 +24,11 @@ export interface Table {
   get(pk: string, sk: string): Promise<Item | null>;
   /** Removes an item if it exists. */
   delete(pk: string, sk: string): Promise<void>;
+  /**
+   * Sets `set` on an existing item only if each attribute in `when` currently has
+   * the given value. False, with nothing written, otherwise.
+   */
+  updateIf(pk: string, sk: string, set: Record<string, unknown>, when: Record<string, unknown>): Promise<boolean>;
   /** Items under `pk` whose sort key starts with `prefix` and is greater than `after`, in key order. */
   query(pk: string, prefix: string, after?: string): Promise<Item[]>;
   /**
@@ -53,7 +58,8 @@ export class DynamoDbRoomRepository implements RoomRepository {
     return this.table.putIfAbsent({
       pk: roomKey(room.code),
       sk: "META",
-      names: [...room.names],
+      seats: room.seats,
+      hostTokenHash: room.hostTokenHash,
       version: 0,
       createdAt: room.createdAt,
       expiresAt: room.expiresAt,
@@ -65,23 +71,37 @@ export class DynamoDbRoomRepository implements RoomRepository {
     if (!meta || this.expired(meta)) return null;
     return {
       code,
-      names: meta["names"] as string[],
+      seats: meta["seats"] as number,
+      hostTokenHash: meta["hostTokenHash"] as string,
       version: meta["version"] as number,
       createdAt: meta["createdAt"] as string,
       expiresAt: meta["expiresAt"] as number,
     };
   }
 
-  async claimSeat(code: string, seat: number, tokenHash: string): Promise<boolean> {
-    const room = await this.get(code);
-    if (!room) return false;
-    return this.table.putIfAbsent({ pk: roomKey(code), sk: seatKey(seat), tokenHash, expiresAt: room.expiresAt });
+  async resize(code: string, from: number, to: number): Promise<boolean> {
+    if (!(await this.get(code))) return false;
+    return this.table.updateIf(roomKey(code), "META", { seats: to }, { seats: from, version: 0 });
   }
 
-  async seats(code: string): Promise<ReadonlyMap<number, string>> {
+  async claimSeat(code: string, seat: number, seated: SeatRecord): Promise<boolean> {
+    const room = await this.get(code);
+    if (!room) return false;
+    return this.table.putIfAbsent({
+      pk: roomKey(code),
+      sk: seatKey(seat),
+      name: seated.name,
+      tokenHash: seated.tokenHash,
+      expiresAt: room.expiresAt,
+    });
+  }
+
+  async seats(code: string): Promise<ReadonlyMap<number, SeatRecord>> {
     if (!(await this.get(code))) return new Map();
     const items = await this.table.query(roomKey(code), "SEAT#");
-    return new Map(items.map((i) => [Number(i.sk.slice("SEAT#".length)), i["tokenHash"] as string]));
+    return new Map(
+      items.map((i) => [Number(i.sk.slice("SEAT#".length)), { name: i["name"] as string, tokenHash: i["tokenHash"] as string }]),
+    );
   }
 
   async events(code: string, after = 0): Promise<readonly PlayEvent[]> {
@@ -126,6 +146,13 @@ export class MemoryTable implements Table {
 
   async delete(pk: string, sk: string): Promise<void> {
     this.items.delete(this.key(pk, sk));
+  }
+
+  async updateIf(pk: string, sk: string, set: Record<string, unknown>, when: Record<string, unknown>): Promise<boolean> {
+    const item = this.items.get(this.key(pk, sk));
+    if (!item || Object.entries(when).some(([k, v]) => item[k] !== v)) return false;
+    Object.assign(item, structuredClone(set));
+    return true;
   }
 
   async query(pk: string, prefix: string, after?: string): Promise<Item[]> {

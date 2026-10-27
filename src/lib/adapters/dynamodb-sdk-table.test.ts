@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 import { type Sender, sdkTable } from "./dynamodb-sdk-table";
 
@@ -47,6 +47,27 @@ describe("Feature: the DynamoDB table calls", () => {
     const { sender, sent } = client();
     await sdkTable(sender, "T").delete("p", "s");
     expect(sent[0]).toEqual({ name: DeleteCommand.name, input: { TableName: "T", Key: { pk: "p", sk: "s" } } });
+  });
+
+  it("updates conditionally, with placeholders for every name and value", async () => {
+    const { sender, sent } = client();
+    expect(await sdkTable(sender, "T").updateIf("p", "META", { seats: 5 }, { seats: 4, version: 0 })).toBe(true);
+    expect(sent[0]).toEqual({
+      name: UpdateCommand.name,
+      input: {
+        TableName: "T",
+        Key: { pk: "p", sk: "META" },
+        UpdateExpression: "SET #s0 = :s0",
+        ConditionExpression: "attribute_exists(pk) AND #w0 = :w0 AND #w1 = :w1",
+        ExpressionAttributeNames: { "#s0": "seats", "#w0": "seats", "#w1": "version" },
+        ExpressionAttributeValues: { ":s0": 5, ":w0": 4, ":w1": 0 },
+      },
+    });
+  });
+
+  it("reports a failed condition on update as false, and passes on other errors", async () => {
+    expect(await sdkTable(client([failure("ConditionalCheckFailedException")]).sender, "T").updateIf("p", "s", { a: 1 }, {})).toBe(false);
+    await expect(sdkTable(client([failure("Boom")]).sender, "T").updateIf("p", "s", { a: 1 }, {})).rejects.toThrow("Boom");
   });
 
   it("queries a prefix, following pages until the end", async () => {

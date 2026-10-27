@@ -1,9 +1,9 @@
-import type { RoomRecord, RoomRepository } from "../app/room-repository";
+import type { RoomRecord, RoomRepository, SeatRecord } from "../app/room-repository";
 import type { PlayEvent } from "../games/catan-play/events";
 
 interface Room {
   record: RoomRecord;
-  seats: Map<number, string>;
+  seats: Map<number, SeatRecord>;
   events: PlayEvent[];
 }
 
@@ -27,14 +27,21 @@ export class MemoryRoomRepository implements RoomRepository {
     return this.live(code)?.record ?? null;
   }
 
-  async claimSeat(code: string, seat: number, tokenHash: string): Promise<boolean> {
+  async resize(code: string, from: number, to: number): Promise<boolean> {
     const room = this.live(code);
-    if (!room || room.seats.has(seat)) return false;
-    room.seats.set(seat, tokenHash);
+    if (!room || room.record.version !== 0 || room.record.seats !== from) return false;
+    room.record = { ...room.record, seats: to };
     return true;
   }
 
-  async seats(code: string): Promise<ReadonlyMap<number, string>> {
+  async claimSeat(code: string, seat: number, seated: SeatRecord): Promise<boolean> {
+    const room = this.live(code);
+    if (!room || room.seats.has(seat)) return false;
+    room.seats.set(seat, { ...seated });
+    return true;
+  }
+
+  async seats(code: string): Promise<ReadonlyMap<number, SeatRecord>> {
     return new Map(this.live(code)?.seats ?? []);
   }
 

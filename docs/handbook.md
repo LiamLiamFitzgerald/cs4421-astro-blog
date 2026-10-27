@@ -93,10 +93,12 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - `GET /api/health` returns `{ status, uptime, timestamp }`.
 - `GET /api/live` (liveness) returns `{ status: "ok" }` and checks nothing else.
 - `GET /api/ready` (readiness) runs the named checks and returns 200 `{ status: "ready", checks }`, or 503 `not-ready` naming the failing checks.
-- **Rooms** (`/rooms`, ADR-019): open it on the shared screen, enter the names
-  and create a room; the board shows the code and a join link. Each player opens
-  the link on their phone and picks their seat; the phone keeps a seat token in
-  `localStorage`, so reloading rejoins the same seat. Moves are pushed: each
+- **Rooms** (`/rooms`, ADR-019, ADR-021): on the shared screen choose how many
+  are playing and create a room; the board shows the code, a join link and the
+  open seats (the host can add seats or remove empty ones). Each player opens the
+  link, or types the code on the Rooms page, and enters their name; they take the
+  next free seat. The host starts once at least 2 have joined. Phones keep a seat
+  token and the board a host token in `localStorage`, so reloading keeps both. Moves are pushed: each
   screen holds a WebSocket (API Gateway in AWS, a local stand-in when
   `ROOMS_PUSH_LOCAL_PORT` is set, as the e2e tests do) that says "changed", and
   the screen fetches its own view. Without a socket, screens poll (fast while
@@ -105,8 +107,10 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
 - Rooms API (ADR-019), all on `/api/rooms`, `cache-control: no-store`:
   `GET ?code=ABCD&since=V` returns the view (send the seat token as
   `x-room-token` to see your own cards; `{unchanged, version}` when nothing is
-  new); `POST {action:"create", names}`, `{action:"join", code, seat}` and
-  `{action:"command", code, command}` (token header). Errors are 400, 401, 403,
+  new); `POST {action:"create", seats}` (returns the host token),
+  `{action:"join", code, name}`, `{action:"resize", code, seats}` and
+  `{action:"start", code}` (host token), and `{action:"command", code, command}`
+  (seat token). Errors are 400, 401, 403,
   404, 409, 413, 422 (rules, with words and the violation), 429 or 503, never 500.
   Rooms live in DynamoDB when `ROOMS_TABLE` is set, otherwise in memory.
 - Every request writes one JSON log line to stdout (timestamp, level, route,

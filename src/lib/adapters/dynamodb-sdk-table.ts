@@ -5,6 +5,7 @@ import {
   PutCommand,
   QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { Item, Table } from "./dynamodb-room-repository";
 
@@ -39,6 +40,38 @@ export function sdkTable(client: Sender, tableName: string): Table {
 
     async delete(pk, sk) {
       await client.send(new DeleteCommand({ TableName: tableName, Key: { pk, sk } }));
+    },
+
+    async updateIf(pk, sk, set, when) {
+      // Names and values are placeholders (#s0, :s0, #w0, :w0), so any attribute name is safe.
+      const names: Record<string, string> = {};
+      const values: Record<string, unknown> = {};
+      const sets = Object.entries(set).map(([k, v], i) => {
+        names[`#s${i}`] = k;
+        values[`:s${i}`] = v;
+        return `#s${i} = :s${i}`;
+      });
+      const checks = Object.entries(when).map(([k, v], i) => {
+        names[`#w${i}`] = k;
+        values[`:w${i}`] = v;
+        return `#w${i} = :w${i}`;
+      });
+      try {
+        await client.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { pk, sk },
+            UpdateExpression: `SET ${sets.join(", ")}`,
+            ConditionExpression: ["attribute_exists(pk)", ...checks].join(" AND "),
+            ExpressionAttributeNames: names,
+            ExpressionAttributeValues: values,
+          }),
+        );
+        return true;
+      } catch (error) {
+        if (conditionFailed(error)) return false;
+        throw error;
+      }
     },
 
     async query(pk, prefix, after) {

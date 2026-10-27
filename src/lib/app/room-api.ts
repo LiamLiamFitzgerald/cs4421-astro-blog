@@ -4,21 +4,25 @@ import {
   createRoom,
   describeRoomError,
   getRoomView,
-  joinSeat,
+  joinRoom,
   parseRoomCode,
+  resizeRoom,
   type RoomDeps,
   type RoomError,
   runRoomCommand,
+  startRoom,
 } from "./rooms";
 
 /**
  * The rooms HTTP API (ADR-019) as plain functions from request parts to a
  * status and body, so every rule is unit tested and the Astro route stays thin.
  *
- *   GET  /api/rooms?code=ABCD&since=7          the view (token header for a seat)
- *   POST /api/rooms {action: "create", names}  a new room
- *   POST /api/rooms {action: "join", code, seat}
- *   POST /api/rooms {action: "command", code, command}   (token header)
+ *   GET  /api/rooms?code=ABCD&since=7                 the view (token header: a seat's or the host's)
+ *   POST /api/rooms {action: "create", seats}          a new lobby; returns the host token
+ *   POST /api/rooms {action: "join", code, name}       take the next free seat
+ *   POST /api/rooms {action: "resize", code, seats}    host token: change the lobby's size
+ *   POST /api/rooms {action: "start", code}            host token: deal the board
+ *   POST /api/rooms {action: "command", code, command} seat token: a move
  */
 export interface ApiResponse {
   readonly status: number;
@@ -37,8 +41,16 @@ export const MAX_ROOM_BODY_BYTES = 8192;
 
 const STATUS: Readonly<Record<RoomError["code"], number>> = {
   NO_SUCH_ROOM: 404,
-  NO_SUCH_SEAT: 400,
-  SEAT_TAKEN: 409,
+  BAD_SEAT_COUNT: 400,
+  SEATS_TAKEN: 409,
+  BAD_NAME: 400,
+  NAME_TAKEN: 409,
+  ROOM_FULL: 409,
+  NOT_HOST: 403,
+  ALREADY_STARTED: 409,
+  NOT_STARTED: 409,
+  TOO_FEW_PLAYERS: 409,
+  NOT_A_PLAYER: 403,
   BAD_TOKEN: 403,
   NOT_YOUR_SEAT: 403,
   NOT_ALLOWED: 400,
@@ -88,19 +100,34 @@ export async function postRoom(
   switch (fields["action"]) {
     case "create": {
       if (!limits.create.allow(client)) return tooMany;
-      const names = fields["names"];
-      if (!Array.isArray(names) || !names.every((n) => typeof n === "string")) return refuse(400, "names must be a list of names");
-      const result = await createRoom(deps, names.map((n) => n.trim()));
+      const seats = fields["seats"];
+      if (typeof seats !== "number") return refuse(400, "seats must be a number of players");
+      const result = await createRoom(deps, seats);
       return result.ok ? { status: 201, body: result.value } : fromRoomError(result.error);
     }
     case "join": {
       if (!limits.join.allow(client)) return tooMany;
       const code = parseRoomCode(typeof fields["code"] === "string" ? fields["code"] : "");
       if (!code) return refuse(400, "code must be a 4-letter room code");
-      const seat = fields["seat"];
-      if (typeof seat !== "number") return refuse(400, "seat must be a seat number");
-      const result = await joinSeat(deps, code, seat);
+      const name = fields["name"];
+      if (typeof name !== "string") return refuse(400, "name must be text");
+      const result = await joinRoom(deps, code, name);
       return result.ok ? { status: 201, body: result.value } : fromRoomError(result.error);
+    }
+    case "resize":
+    case "start": {
+      if (!limits.command.allow(client)) return tooMany;
+      if (!token) return refuse(401, "the host token is required");
+      const code = parseRoomCode(typeof fields["code"] === "string" ? fields["code"] : "");
+      if (!code) return refuse(400, "code must be a 4-letter room code");
+      if (fields["action"] === "start") {
+        const result = await startRoom(deps, code, token);
+        return result.ok ? { status: 200, body: result.value } : fromRoomError(result.error);
+      }
+      const seats = fields["seats"];
+      if (typeof seats !== "number") return refuse(400, "seats must be a number of players");
+      const result = await resizeRoom(deps, code, token, seats);
+      return result.ok ? { status: 200, body: result.value } : fromRoomError(result.error);
     }
     case "command": {
       if (!limits.command.allow(client)) return tooMany;
@@ -113,6 +140,6 @@ export async function postRoom(
       return result.ok ? { status: 200, body: result.value } : fromRoomError(result.error);
     }
     default:
-      return refuse(400, "action must be create, join or command");
+      return refuse(400, "action must be create, join, resize, start or command");
   }
 }
