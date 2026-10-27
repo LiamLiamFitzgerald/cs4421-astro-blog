@@ -23,7 +23,7 @@
     "load-test": "jiti scripts/load-test.ts"
   },
   "dependencies": {
-    "@astrojs/mdx": "^8.1.0",
+    "@astrojs/mdx": "^8.1.1",
     "@astrojs/node": "^11.1.7",
     "@astrojs/sitemap": "^3.7.4",
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1156.0",
