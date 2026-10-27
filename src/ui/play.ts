@@ -17,7 +17,6 @@ import {
 	describeStep,
 	CARD_EFFECTS,
 	CARD_NAMES,
-	describeCardReason,
 	PIECE_NAMES,
 	tradeableResources,
 } from '../lib/app/play-view';
@@ -46,6 +45,7 @@ import type { PlayState } from '../lib/games/catan-play/state';
 import { TOPOLOGY } from '../lib/games/catan-play/topology';
 import { WINNING_POINTS } from '../lib/games/catan/score';
 import { type BoardOverlay, renderBoard } from './board';
+import { describeEffect, detectEffects, ranking } from '../lib/app/play-effects';
 import { el, type Feedback, required } from './feedback';
 import { iconElement, type IconName } from './icons';
 
@@ -221,6 +221,39 @@ export function mountPlay(
 	const winner = required<HTMLElement>('#play-winner');
 	const events = required<HTMLOListElement>('#play-events');
 	const eventCount = required<HTMLElement>('#play-event-count');
+	const banner = required<HTMLElement>('#play-banner');
+	const boardFigure = board.closest('figure');
+	let bannerTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Leaderboard ranks at the last render, to highlight a player moving up. */
+	let lastRanks = new Map<string, number>();
+
+	/** Replays a CSS animation on an element by toggling its class (ADR-020). */
+	const pulse = (node: Element | null | undefined, className: string) => {
+		if (!node) return;
+		node.classList.remove(className);
+		void (node as HTMLElement).offsetWidth; // restart the animation
+		node.classList.add(className);
+		node.addEventListener('animationend', () => node.classList.remove(className), { once: true });
+	};
+
+	/** Shows the big moments between two views: a banner, and the board or a row reacting. */
+	function celebrate(before: PlaySnapshot | null, after: PlaySnapshot) {
+		const effects = detectEffects(before, after);
+		const top = effects[0];
+		if (!top) return;
+		const words = describeEffect(top);
+		banner.replaceChildren(iconElement(words.icon as IconName), document.createTextNode(words.text));
+		banner.className = `banner banner--${top.kind}`;
+		banner.hidden = false;
+		pulse(banner, 'banner--show');
+		if (bannerTimer) clearTimeout(bannerTimer);
+		bannerTimer = setTimeout(() => (banner.hidden = true), 2600);
+		for (const effect of effects) {
+			if (effect.kind === 'robber' || effect.kind === 'seven') pulse(boardFigure, 'board--shake');
+			if (effect.kind === 'stolen') pulse(roster.querySelector(`[data-player="${CSS.escape(effect.victim)}"]`), 'row--robbed');
+			if (effect.kind === 'lead' || effect.kind === 'win') pulse(roster.querySelector(`[data-player="${CSS.escape(effect.player)}"]`), 'row--cheer');
+		}
+	}
 
 	let mode: Piece | null = null;
 	let busy = false;
@@ -270,7 +303,8 @@ export function mountPlay(
 		busy = true;
 		section.setAttribute('aria-busy', 'true');
 		try {
-			const before = (await source.snapshot()).state;
+			const beforeView = await source.snapshot();
+			const before = beforeView.state;
 			const result = await source.run(command);
 			if (!result.ok) {
 				lastMessage = result.message;
@@ -284,6 +318,7 @@ export function mountPlay(
 			rolledJustNow = command.type === 'RollDice';
 			fresh = changes(before, result.snapshot.state);
 			await render(result.snapshot);
+			celebrate(beforeView, result.snapshot);
 			feedback.announce(result.announce);
 			return null;
 		} catch (error) {
@@ -440,7 +475,9 @@ export function mountPlay(
 		if (state.phase === 'setup') head.append(el('span', 'turn__phase', 'Setup'));
 		parts.push(head);
 
-		if (step) parts.push(el('p', 'turn__step', describeStep(step)));
+		// ADR-020: when this screen acts and the buttons already say what to do, skip the sentence.
+		const buttonsSayIt = canAct(state) && (step === 'roll' || step === 'build-or-end');
+		if (step && !buttonsSayIt) parts.push(el('p', 'turn__step', describeStep(step)));
 
 		// Show this turn's roll; before rolling, the previous player's dice would only confuse.
 		if (state.lastRoll && state.phase !== 'setup' && step !== 'roll') {
@@ -475,7 +512,7 @@ export function mountPlay(
 			group.setAttribute('aria-label', 'Steal a card');
 			for (const victim of state.pending.victims) {
 				const cards = cardCount(state, victim);
-				const b = button(`Steal from ${victim} (${cards} card${cards === 1 ? '' : 's'})`, null, 'button');
+				const b = button(`Steal from ${victim} (${cards} card${cards === 1 ? '' : 's'})`, 'knight', 'button action action--rob action--next');
 				// The card is chosen at random here and checked by the rules (ADR-011).
 				b.addEventListener('click', () => void run({ type: 'StealFrom', player, victim, pick: randomBelow(cards) }));
 				group.append(b);
@@ -486,34 +523,26 @@ export function mountPlay(
 			actions.append(responsePanel(state, state.pending));
 		}
 		if (step === 'roll') {
-			const roll = button('Roll the dice', 'dice', 'button button--primary');
+			const roll = button('Roll the dice', 'dice', 'button action action--roll action--next');
 			roll.addEventListener('click', () => void run({ type: 'RollDice', player, dice: [rollDie(), rollDie()] }));
 			actions.append(roll);
+			// Cards can be played before rolling (a knight, say).
+			const cards = devCardPanel(state, player);
+			if (cards) actions.append(cards);
 		}
 		if (step === 'build-or-end') {
+			// ADR-020: only what this player can do right now.
 			const builds = el('div', 'builds');
 			builds.setAttribute('role', 'group');
 			builds.setAttribute('aria-label', 'Build');
 			for (const option of buildOptions(state, player)) {
-				const b = el('button', 'button build');
+				if (!option.allowed) continue;
+				const b = el('button', `button action action--build${mode === option.piece ? ' is-active' : ''}`);
 				b.type = 'button';
 				b.setAttribute('aria-pressed', String(mode === option.piece));
-				const label = el('span', 'build__label');
+				const label = el('span', 'action__label');
 				label.append(iconElement(PIECE_ICONS[option.piece]), document.createTextNode(`Build ${PIECE_NAMES[option.piece]}`));
 				b.append(label, costList(option.cost));
-				const reason =
-					option.piecesLeft === 0
-						? `No ${PIECE_NAMES[option.piece]} pieces left`
-						: handSize(option.missing) > 0
-							? `Needs ${describeHand(option.missing)}`
-							: option.spots.length === 0
-								? 'Nowhere to build one yet'
-								: `${option.piecesLeft} left`;
-				const note = el('span', 'build__note', reason);
-				note.id = `build-note-${option.piece}`;
-				b.setAttribute('aria-describedby', note.id);
-				b.append(note);
-				b.disabled = !option.allowed;
 				b.addEventListener('click', () => {
 					mode = mode === option.piece ? null : option.piece;
 					lastMessage = '';
@@ -523,57 +552,44 @@ export function mountPlay(
 				});
 				builds.append(b);
 			}
-			builds.append(buyCardButton(state, player));
-			actions.append(builds, tradeForm(state, player), offerForm(state, player));
-			const cards = devCardPanel(state, player);
-			if (cards) actions.append(cards);
-			const end = button('End turn', null, 'button button--primary turn__end');
+			const buy = buyCardButton(state, player);
+			if (buy) builds.append(buy);
+			const extras = [tradeForm(state, player), offerForm(state, player), devCardPanel(state, player)].filter(
+				(x): x is HTMLElement => x !== null,
+			);
+			if (builds.childElementCount > 0) actions.append(builds);
+			actions.append(...extras);
+			const nothing = builds.childElementCount === 0 && extras.length === 0;
+			if (nothing) actions.append(el('p', 'turn__nothing', 'Nothing you can do right now.'));
+			const end = button('End turn', 'check', `button action action--end turn__end${nothing ? ' action--next' : ''}`);
 			end.addEventListener('click', () => void run({ type: 'EndTurn', player }));
 			actions.append(end);
-		}
-		if (step === 'roll') {
-			// Cards can be played before rolling (a knight, say).
-			const cards = devCardPanel(state, player);
-			if (cards) actions.append(cards);
 		}
 		parts.push(actions);
 		return parts;
 	}
 
-	function buyCardButton(state: PlayState, player: string): HTMLButtonElement {
-		const b = el('button', 'button build');
-		b.type = 'button';
-		const label = el('span', 'build__label');
-		label.append(iconElement('card'), document.createTextNode('Buy card'));
+	/** Buy a development card, offered only when it is affordable and the deck is not empty. */
+	function buyCardButton(state: PlayState, player: string): HTMLButtonElement | null {
 		const short = missing(state.hands[player] ?? emptyHand, DEV_CARD_COST);
-		const reason =
-			state.deck.length === 0
-				? 'No cards left'
-				: handSize(short) > 0
-					? `Needs ${describeHand(short)}`
-					: `${state.deck.length} left`;
-		const note = el('span', 'build__note', reason);
-		note.id = 'build-note-card';
-		b.setAttribute('aria-describedby', note.id);
-		b.append(label, costList(DEV_CARD_COST), note);
-		b.disabled = state.deck.length === 0 || handSize(short) > 0;
+		if (state.deck.length === 0 || handSize(short) > 0) return null;
+		const b = el('button', 'button action action--card');
+		b.type = 'button';
+		const label = el('span', 'action__label');
+		label.append(iconElement('card'), document.createTextNode('Buy card'));
+		b.append(label, costList(DEV_CARD_COST));
 		b.addEventListener('click', () => void run({ type: 'BuyDevelopmentCard', player }));
 		return b;
 	}
 
-	/** The current player's development cards, each with Play (or why it cannot be played). */
+	/** The development cards this player can play now; null when there are none. */
 	function devCardPanel(state: PlayState, player: string): HTMLElement | null {
-		const options = devCardOptions(state, player);
+		const options = devCardOptions(state, player).filter((o) => o.allowed && o.card !== 'victory-point');
 		if (options.length === 0) return null;
 		const section = el('section', 'cards');
 		section.setAttribute('aria-label', `${player}'s development cards`);
-		section.append(el('p', 'trade__title', 'Development cards'));
 		for (const option of options) {
 			const row = el('div', 'card-row');
-			const name = el('div', 'card-row__name');
-			name.append(iconElement(option.card === 'knight' ? 'knight' : 'card'), document.createTextNode(`${CARD_NAMES[option.card]}${option.held > 1 ? ` ×${option.held}` : ''}`));
-			const text = el('p', 'card-row__text', CARD_EFFECTS[option.card]);
-			const controls = el('div', 'card-row__controls');
 			const choose = (labelText: string) => {
 				const select = el('select', 'input trade__select');
 				select.setAttribute('aria-label', labelText);
@@ -581,30 +597,29 @@ export function mountPlay(
 				return select;
 			};
 			let command: () => PlayCommand | null = () => null;
+			const controls: HTMLElement[] = [];
 			if (option.card === 'knight') command = () => ({ type: 'PlayKnight', player });
 			if (option.card === 'road-building') command = () => ({ type: 'PlayRoadBuilding', player });
 			if (option.card === 'year-of-plenty') {
 				const a = choose('First resource');
 				const b = choose('Second resource');
-				controls.append(a, b);
+				controls.push(a, b);
 				command = () => ({ type: 'PlayYearOfPlenty', player, resources: [a.value as Resource, b.value as Resource] });
 			}
 			if (option.card === 'monopoly') {
 				const r = choose('Resource to take');
-				controls.append(r);
+				controls.push(r);
 				command = () => ({ type: 'PlayMonopoly', player, resource: r.value as Resource });
 			}
-			if (option.card !== 'victory-point') {
-				const play = button(`Play ${CARD_NAMES[option.card].toLowerCase()}`, null, 'button button--small');
-				play.disabled = !option.allowed;
-				play.addEventListener('click', () => {
-					const c = command();
-					if (c) void run(c);
-				});
-				controls.append(play);
-			}
-			row.append(name, text, controls);
-			if (!option.allowed) row.append(el('p', 'build__note', describeCardReason(option.reason)));
+			const play = button(`Play ${CARD_NAMES[option.card].toLowerCase()}`, option.card === 'knight' ? 'knight' : 'card', 'button action action--card');
+			// The effect is a tooltip and an accessible description, not a paragraph on screen (ADR-020).
+			play.title = CARD_EFFECTS[option.card];
+			play.setAttribute('aria-description', CARD_EFFECTS[option.card]);
+			play.addEventListener('click', () => {
+				const c = command();
+				if (c) void run(c);
+			});
+			row.append(play, ...controls);
 			section.append(row);
 		}
 		return section;
@@ -618,7 +633,7 @@ export function mountPlay(
 		const chosen: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
 		const status = el('p', 'discard__status numeric');
 		status.setAttribute('aria-live', 'polite');
-		const submit = button('Discard', null, 'button button--primary');
+		const submit = button('Discard', 'close', 'button action action--rob');
 		submit.type = 'submit';
 		const rows = el('div', 'discard__rows');
 		const update = () => {
@@ -703,16 +718,18 @@ export function mountPlay(
 	}
 
 	/** Offer a trade to another player; tucked away until opened (progressive disclosure). */
-	function offerForm(state: PlayState, player: string): HTMLElement {
-		const details = el('details', 'offer');
-		details.append(el('summary', undefined, 'Offer a trade to another player'));
+	/** Offer a trade to another player; only when this player holds cards. Tucked away until opened. */
+	function offerForm(state: PlayState, player: string): HTMLElement | null {
 		const others = state.players.filter((p) => p !== player);
+		if (others.length === 0 || handSize(state.hands[player] ?? emptyHand) === 0) return null;
+		const details = el('details', 'offer');
+		details.append(el('summary', undefined, 'Trade with a player'));
 		const form = el('form', 'offer__form');
 		const to = el('select', 'input trade__select');
 		to.setAttribute('aria-label', 'Trade with');
 		for (const p of others) to.append(new Option(p, p));
 		const held = state.hands[player] ?? emptyHand;
-		const submit = button('Offer trade', null, 'button button--small');
+		const submit = button('Offer trade', 'retry', 'button action action--trade action--small');
 		submit.type = 'submit';
 		const check = () => {
 			const total = (h: Record<Resource, number>) => RESOURCES.reduce((n, r) => n + h[r], 0);
@@ -739,10 +756,10 @@ export function mountPlay(
 			el('p', 'response__terms', `${offer.from} offers ${describeHand(offer.give)} for your ${describeHand(offer.get)}.`),
 		);
 		const short = missing(state.hands[offer.to] ?? emptyHand, offer.get);
-		const accept = button('Accept trade', 'check', 'button button--primary');
+		const accept = button('Accept trade', 'check', 'button action action--trade action--next');
 		accept.disabled = handSize(short) > 0;
 		accept.addEventListener('click', () => void run({ type: 'AcceptTrade', player: offer.to }));
-		const decline = button('Decline', 'close', 'button');
+		const decline = button('Decline', 'close', 'button action action--end');
 		decline.addEventListener('click', () => void run({ type: 'DeclineTrade', player: offer.to }));
 		const buttons = el('div', 'response__buttons');
 		buttons.append(accept, decline);
@@ -751,13 +768,15 @@ export function mountPlay(
 		return panel;
 	}
 
-	function tradeForm(state: PlayState, player: string): HTMLElement {
+	/** A bank trade, offered only when this player has enough of something to trade. */
+	function tradeForm(state: PlayState, player: string): HTMLElement | null {
 		const form = el('form', 'trade');
 		form.setAttribute('aria-label', 'Trade with the bank');
 		const rate = (r: Resource) => tradeRate(state, player, r);
 		const offer = tradeableResources(state.hands[player] ?? emptyHand, rate);
 		const best = Math.min(...RESOURCES.map(rate));
-		const legend = el('p', 'trade__title', best < 4 ? 'Trade with the bank (your harbour rates)' : 'Trade 4 for 1 with the bank');
+		if (offer.length === 0) return null;
+		const legend = el('p', 'trade__title', best < 4 ? 'Bank trade (harbour rates)' : 'Bank trade');
 		const give = el('select', 'input trade__select');
 		give.setAttribute('aria-label', 'Give');
 		const get = el('select', 'input trade__select');
@@ -766,15 +785,9 @@ export function mountPlay(
 		for (const r of RESOURCES) get.append(new Option(`1 ${r}`, r));
 		const firstOther = RESOURCES.find((r) => r !== offer[0]);
 		if (firstOther) get.value = firstOther;
-		const submit = button('Trade', null, 'button button--small');
+		const submit = button('Trade', 'retry', 'button action action--trade action--small');
 		submit.type = 'submit';
 		form.append(legend);
-		if (offer.length === 0) {
-			form.append(
-				el('p', 'hint', best < 4 ? `You need ${best} or more of one resource to trade.` : 'You need 4 of one resource to trade. Harbours lower the rate.'),
-			);
-			return form;
-		}
 		const row = el('div', 'trade__row');
 		row.append(give, el('span', 'trade__for', 'for'), get, submit);
 		form.append(row);
@@ -791,6 +804,7 @@ export function mountPlay(
 		const seat = seatOf(state, player);
 		const isCurrent = actingPlayer(state) === player && !state.winner;
 		const row = el('article', `play-player seat-color--${seat}`);
+		row.dataset.player = player;
 		row.classList.toggle('play-player--current', isCurrent);
 		row.classList.toggle('player--winner', state.winner === player);
 		row.setAttribute('aria-label', `${player}${isCurrent ? ', playing now' : ''}`);
@@ -878,6 +892,48 @@ export function mountPlay(
 		return row;
 	}
 
+	/** The shared board's leaderboard (ADR-020): ranked, big numbers, awards at a glance. */
+	function leaderboard(state: PlayState): HTMLElement {
+		const section = el('section', 'leaderboard');
+		section.setAttribute('aria-labelledby', 'leaderboard-title');
+		const title = el('h2', 'leaderboard__title', 'Leaderboard');
+		title.id = 'leaderboard-title';
+		const list = el('ol', 'leaderboard__list');
+		const ranks = ranking(state);
+		const acting = actingPlayer(state);
+		for (const { player, points: score, rank } of ranks) {
+			const seat = seatOf(state, player);
+			const item = el('li', `leaderboard__row seat-color--${seat} leaderboard__row--rank-${Math.min(rank, 4)}`);
+			item.dataset.player = player;
+			const previous = lastRanks.get(player);
+			if (previous !== undefined && rank < previous) item.classList.add('leaderboard__row--up');
+			item.classList.toggle('leaderboard__row--acting', acting === player && !state.winner);
+			const badge = el('span', 'leaderboard__rank numeric', String(rank));
+			badge.setAttribute('aria-label', `Rank ${rank}`);
+			const name = el('span', 'leaderboard__name');
+			name.append(el('span', `seat seat--${seat}`, String(seat)), document.createTextNode(` ${player}`));
+			if (acting === player && !state.winner) name.append(el('span', 'leaderboard__now', 'playing'));
+			const meter = el('span', 'leaderboard__meter');
+			meter.setAttribute('aria-hidden', 'true');
+			const fill = el('span', 'leaderboard__fill');
+			fill.style.width = `${Math.min(100, (score / WINNING_POINTS) * 100)}%`;
+			meter.append(fill);
+			const extras = el('span', 'leaderboard__extras');
+			if (state.winner === player) extras.append(iconElement('crown', 'Winner'));
+			if (state.longestRoad === player) extras.append(iconElement('trophy', 'Longest Road'));
+			if (state.largestArmy === player) extras.append(iconElement('army', 'Largest Army'));
+			const cards = cardCount(state, player);
+			extras.append(el('span', 'leaderboard__cards numeric', `${cards} card${cards === 1 ? '' : 's'}`));
+			const points_ = el('span', 'leaderboard__points numeric', String(score));
+			points_.setAttribute('aria-label', `${score} of ${WINNING_POINTS} points`);
+			item.append(badge, name, points_, meter, extras);
+			list.append(item);
+		}
+		lastRanks = new Map(ranks.map((r) => [r.player, r.rank]));
+		section.append(title, list);
+		return section;
+	}
+
 	// ------------------------------------------------------------ render
 
 	async function render(snapshot?: PlaySnapshot): Promise<void> {
@@ -893,7 +949,7 @@ export function mountPlay(
 		}
 		boardHint.textContent = boardInstruction(state);
 		turn.replaceChildren(...turnPanel(state));
-		roster.replaceChildren(...state.players.map((p) => playerRow(state, p)));
+		roster.replaceChildren(...(viewer.kind === 'board' ? [leaderboard(state)] : state.players.map((p) => playerRow(state, p))));
 
 		winner.hidden = state.winner === null;
 		if (state.winner) {
@@ -924,6 +980,7 @@ export function mountPlay(
 			if (before) fresh = changes(before.state, snapshot.state);
 			rolledJustNow = before !== null && JSON.stringify(snapshot.state.lastRoll) !== JSON.stringify(before.state.lastRoll);
 			await render(snapshot);
+			celebrate(before, snapshot);
 			const added = snapshot.history.slice(before?.history.length ?? snapshot.history.length);
 			if (added.length > 0) feedback.announce(`${added.join('. ')}.`);
 		},
