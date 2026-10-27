@@ -18,7 +18,9 @@
     "commitlint": "commitlint",
     "test:mutation": "stryker run",
     "arch": "depcruise src --config .dependency-cruiser.cjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bench": "jiti scripts/bench-rooms.ts",
+    "load-test": "jiti scripts/load-test.ts"
   },
   "dependencies": {
     "@astrojs/mdx": "^8.1.0",
