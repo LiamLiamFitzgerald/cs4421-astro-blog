@@ -6,8 +6,10 @@ import { type ApiResponse, getRoom, MAX_ROOM_BODY_BYTES, postRoom, type RoomLimi
 // One set per server instance (ADR-019). The rules live in src/lib/app/room-api.ts.
 const deps = roomDepsFromEnvironment();
 const minute = 60_000;
+// ROOMS_CREATE_LIMIT raises the room limit for the e2e suite, which creates many rooms from one address.
+const createLimit = Number(process.env["ROOMS_CREATE_LIMIT"] ?? "") || 10;
 const limits: RoomLimits = {
-  create: createRateLimiter(10, 10 * minute),
+  create: createRateLimiter(createLimit, 10 * minute),
   join: createRateLimiter(30, 10 * minute),
   command: createRateLimiter(120, minute),
   // A household shares one address: a board and six phones polling every 1.5 s.

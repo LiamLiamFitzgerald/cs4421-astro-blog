@@ -953,3 +953,270 @@
 		transform: none;
 	}
 }
+
+/*
+ * Big moments (ADR-020): a banner over the board, the board shaking for the
+ * robber and a 7, rows flashing for a theft or a new leader. Reduced motion
+ * keeps the banner (it fades in place) and drops all movement.
+ */
+.scoreboard .game__board {
+	position: relative;
+}
+.scoreboard .banner {
+	position: absolute;
+	top: 38%;
+	left: 50%;
+	z-index: 5;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	max-width: 92%;
+	padding: var(--space-3) var(--space-5);
+	border-radius: var(--radius-full);
+	background: var(--color-forest);
+	color: var(--color-ink-inverse);
+	font-family: var(--font-heading);
+	font-size: var(--text-2xl);
+	font-weight: 700;
+	line-height: 1.1;
+	text-align: center;
+	white-space: nowrap;
+	box-shadow: 0 6px 0 rgb(0 0 0 / 0.18), var(--shadow-2);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+.scoreboard .banner .icon {
+	width: 1.1em;
+	height: 1.1em;
+	flex: none;
+}
+.scoreboard .banner--stolen,
+.scoreboard .banner--robber,
+.scoreboard .banner--seven {
+	background: var(--action-rob);
+}
+.scoreboard .banner--win,
+.scoreboard .banner--lead,
+.scoreboard .banner--award {
+	background: var(--action-roll);
+	color: var(--action-roll-ink);
+}
+.scoreboard .banner--city,
+.scoreboard .banner--settlement {
+	background: var(--action-build);
+}
+.scoreboard .banner--show {
+	animation: banner-pop 2.6s var(--ease-out) both;
+}
+@keyframes banner-pop {
+	0% {
+		opacity: 0;
+		transform: translate(-50%, -50%) scale(0.4) rotate(-6deg);
+	}
+	12% {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1.12) rotate(2deg);
+	}
+	20% {
+		transform: translate(-50%, -50%) scale(1) rotate(0);
+	}
+	85% {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: translate(-50%, -60%) scale(0.95);
+	}
+}
+.scoreboard .board--shake {
+	animation: board-shake 520ms ease-in-out;
+}
+@keyframes board-shake {
+	0%,
+	100% {
+		transform: translateX(0) rotate(0);
+	}
+	20% {
+		transform: translateX(-10px) rotate(-1.2deg);
+	}
+	40% {
+		transform: translateX(9px) rotate(1deg);
+	}
+	60% {
+		transform: translateX(-6px) rotate(-0.6deg);
+	}
+	80% {
+		transform: translateX(4px);
+	}
+}
+.scoreboard .row--robbed {
+	animation: row-robbed 1.2s ease-in-out;
+}
+@keyframes row-robbed {
+	0%,
+	100% {
+		background-color: transparent;
+	}
+	15%,
+	45%,
+	75% {
+		background-color: var(--color-danger-tint);
+		transform: translateX(-4px);
+	}
+	30%,
+	60% {
+		transform: translateX(4px);
+	}
+}
+.scoreboard .row--cheer {
+	animation: row-cheer 1.4s var(--ease-out);
+}
+@keyframes row-cheer {
+	0% {
+		background-color: var(--color-wheat-tint);
+		transform: scale(1.03);
+	}
+	100% {
+		background-color: transparent;
+		transform: scale(1);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.scoreboard .banner--show {
+		animation: banner-fade 2.6s linear both;
+	}
+	@keyframes banner-fade {
+		0%,
+		90% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 0;
+		}
+	}
+	.scoreboard .board--shake,
+	.scoreboard .row--robbed,
+	.scoreboard .row--cheer {
+		animation: none;
+	}
+}
+
+/* The shared board's leaderboard (ADR-020). */
+.scoreboard .leaderboard {
+	padding: var(--space-4);
+}
+.scoreboard .leaderboard__title {
+	margin: 0 0 var(--space-3);
+	font-size: var(--text-xl);
+}
+.scoreboard .leaderboard__list {
+	display: grid;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.scoreboard .leaderboard__row {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	grid-template-areas:
+		'rank name points'
+		'rank meter meter'
+		'rank extras extras';
+	align-items: center;
+	gap: var(--space-1) var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-m);
+	background: var(--color-surface-raised);
+	border-left: 6px solid var(--seat-colour, var(--color-line-strong));
+	transition: transform var(--duration-medium) var(--ease-out);
+}
+.scoreboard .leaderboard__row--acting {
+	box-shadow: 0 0 0 3px var(--action-roll);
+}
+.scoreboard .leaderboard__row--up {
+	animation: row-cheer 1.4s var(--ease-out);
+}
+.scoreboard .leaderboard__rank {
+	grid-area: rank;
+	display: grid;
+	place-items: center;
+	width: 2.6rem;
+	height: 2.6rem;
+	border-radius: var(--radius-full);
+	background: var(--color-surface-sunk);
+	font-family: var(--font-heading);
+	font-size: var(--text-xl);
+	font-weight: 700;
+}
+.scoreboard .leaderboard__row--rank-1 .leaderboard__rank {
+	background: var(--action-roll);
+	color: var(--action-roll-ink);
+}
+.scoreboard .leaderboard__row--rank-2 .leaderboard__rank {
+	background: #c9c6bd;
+}
+.scoreboard .leaderboard__row--rank-3 .leaderboard__rank {
+	background: #d8a679;
+}
+.scoreboard .leaderboard__name {
+	grid-area: name;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--text-l);
+	font-weight: 700;
+}
+.scoreboard .leaderboard__now {
+	margin-left: var(--space-2);
+	padding: 0.05rem var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--action-roll);
+	color: var(--action-roll-ink);
+	font-size: var(--text-xs);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+.scoreboard .leaderboard__points {
+	grid-area: points;
+	font-family: var(--font-heading);
+	font-size: var(--text-3xl);
+	font-weight: 700;
+	line-height: 1;
+}
+.scoreboard .leaderboard__meter {
+	grid-area: meter;
+	height: 0.6rem;
+	border-radius: var(--radius-full);
+	background: var(--color-surface-sunk);
+	overflow: hidden;
+}
+.scoreboard .leaderboard__fill {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: var(--seat-colour, var(--action-build));
+	transition: width 600ms var(--ease-out);
+}
+.scoreboard .leaderboard__extras {
+	grid-area: extras;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--color-ink-muted);
+	font-size: var(--text-s);
+}
+.scoreboard .leaderboard__extras .icon {
+	color: var(--color-ink);
+}
+@media (prefers-reduced-motion: reduce) {
+	.scoreboard .leaderboard__row--up {
+		animation: none;
+	}
+	.scoreboard .leaderboard__fill {
+		transition: none;
+	}
+}

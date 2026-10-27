@@ -74,7 +74,7 @@ test.describe("Feature: playing in a room", () => {
   test("given the board, nobody's resource cards are shown, only how many", async ({ browser }) => {
     const { board, code } = await openRoom(browser);
     await phone(browser, code, "Ana");
-    await expect(board.locator("#play-players .hand-count").first()).toHaveText(/\d+ resource cards?/);
+    await expect(board.locator(".leaderboard__cards").first()).toHaveText(/^\d+ cards?$/);
     await expect(board.locator("#play-players dl.hand")).toHaveCount(0);
   });
 });
@@ -96,3 +96,24 @@ test.describe("Feature: moves are pushed to the screens", () => {
   });
 });
 
+
+test.describe("Feature: the shared board is lively (ADR-020)", () => {
+  test("given the board, a leaderboard ranks the players and marks who is playing", async ({ browser }) => {
+    const { board, code } = await openRoom(browser);
+    await phone(browser, code, "Ana");
+    const rows = board.getByRole("region", { name: "Leaderboard" }).locator(".leaderboard__row");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText("Ana");
+    await expect(rows.first()).toContainText("playing");
+    await expect(board.locator("#play-players article")).toHaveCount(0);
+  });
+
+  test("given a settlement built on a phone, the board shows a banner", async ({ browser }) => {
+    const { board, code } = await openRoom(browser);
+    const ana = await phone(browser, code, "Ana");
+    await ana.locator("#play-board [data-spot]").first().click();
+    await expect(board.locator("#play-banner")).toBeVisible({ timeout: 3000 });
+    await expect(board.locator("#play-banner")).toHaveText("Ana settled");
+    await expect(board.locator("#play-banner")).toHaveAttribute("aria-hidden", "true");
+  });
+});
