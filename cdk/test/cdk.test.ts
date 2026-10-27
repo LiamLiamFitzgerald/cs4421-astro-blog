@@ -416,3 +416,31 @@ describe('Feature: pushing room changes (ADR-019)', () => {
   });
 });
 
+describe('Feature: a custom domain for the site (ADR-022)', () => {
+  const env = { account: '111111111111', region: 'us-east-1' };
+  const arn = 'arn:aws:acm:us-east-1:111111111111:certificate/abc';
+
+  it('given a domain and certificate, CloudFront answers for the domain with that certificate', () => {
+    const t = Template.fromStack(new AppLambdaStack(new cdk.App(), 'TestDomain', { env, domainName: 'catan.example.com', certificateArn: arn }));
+    t.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        Aliases: ['catan.example.com'],
+        ViewerCertificate: Match.objectLike({ AcmCertificateArn: arn, SslSupportMethod: 'sni-only' }),
+      }),
+    });
+    expect(t.findOutputs('SiteUrl')['SiteUrl']?.['Value']).toBe('https://catan.example.com');
+    t.hasOutput('CloudFrontDomain', {});
+  });
+
+  it('given no domain, the distribution keeps only its cloudfront.net address', () => {
+    const t = Template.fromStack(new AppLambdaStack(new cdk.App(), 'TestNoDomain', { env }));
+    const config = JSON.stringify(t.findResources('AWS::CloudFront::Distribution'));
+    expect(config).not.toContain('Aliases');
+  });
+
+  it('given a domain without a certificate (or the other way round), refuses to build', () => {
+    expect(() => new AppLambdaStack(new cdk.App(), 'TestHalf', { env, domainName: 'catan.example.com' })).toThrow(/both domainName and certificateArn/);
+    expect(() => new AppLambdaStack(new cdk.App(), 'TestHalf2', { env, certificateArn: arn })).toThrow(/both domainName and certificateArn/);
+  });
+});
+
