@@ -107,3 +107,4 @@ rules, all gated in CI. See [ADR-005](adr/ADR-005-verification-strategy.md).
 - [ADR-019](adr/ADR-019-shared-rooms.md): shared rooms with a server-authoritative game log
 - [ADR-020](adr/ADR-020-playful-action-first-ui.md): a playful, action-first game screen
 - [ADR-021](adr/ADR-021-room-lobby.md): rooms start in a lobby
+- [ADR-022](adr/ADR-022-custom-domain.md): the site on a custom domain, DNS at the registrar

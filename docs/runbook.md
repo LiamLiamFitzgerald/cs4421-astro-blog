@@ -70,6 +70,28 @@ All from Actions, **App Environment (Lambda)**, Run workflow:
   `lambda:PutFunctionConcurrency` and `lambda:DeleteFunctionConcurrency` for
   `revive`.
 
+## Custom domain (ADR-022)
+
+To serve the site at `catan.liamfitzgerald.space` (DNS at Namecheap):
+
+1. **Certificate:** AWS Console, Certificate Manager, region **us-east-1**,
+   Request a public certificate for `catan.liamfitzgerald.space`, DNS
+   validation. Open it and copy the CNAME name and value it shows.
+2. **Validation record:** Namecheap, Domain List, Manage, Advanced DNS, Add New
+   Record, CNAME. Host is the name **without** `.liamfitzgerald.space` (for
+   example `_1a2b3c.catan`), value is the target (ending `.acm-validations.aws.`).
+   Wait for the certificate to say Issued (minutes, sometimes an hour). Keep this
+   record: ACM uses it to renew.
+3. **Site record:** another CNAME, host `catan`, value the distribution's
+   `d….cloudfront.net` name (the `CloudFrontDomain` output of a deploy).
+4. **Variables:** in GitHub, set `SITE_DOMAIN` to `catan.liamfitzgerald.space`
+   and `SITE_CERT_ARN` to the certificate's ARN.
+5. **Deploy** with App Environment. Set `SITE_URL` (uptime check) to the new
+   address.
+
+After a `destroy` the distribution gets a new `cloudfront.net` name: update the
+`catan` CNAME.
+
 ## The rollback drill (ADR-016)
 
 Proves that a bad release is stopped. Run **App Environment** with `drill`:

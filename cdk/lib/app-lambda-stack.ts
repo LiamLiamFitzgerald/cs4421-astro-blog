@@ -6,6 +6,7 @@ import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 import * as path from 'node:path';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -39,6 +40,13 @@ export interface AppLambdaStackProps extends cdk.StackProps {
   readonly maxConcurrency?: number;
   /** ADR-019: monthly spend, in US dollars, at which the kill switch turns the site off. */
   readonly budgetUsd?: number;
+  /**
+   * ADR-022: serve the site on this domain too (for example catan.liamfitzgerald.space).
+   * Needs `certificateArn`: an ACM certificate for it, validated, in us-east-1.
+   * DNS stays with the domain's registrar; point a CNAME at the distribution.
+   */
+  readonly domainName?: string;
+  readonly certificateArn?: string;
 }
 
 /** DynamoDB's always-free allowance is 25 read and 25 write units per account; rooms use part of it. */
@@ -229,7 +237,17 @@ export class AppLambdaStack extends cdk.Stack {
 
     const url = live.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
 
+    if ((props.domainName === undefined) !== (props.certificateArn === undefined)) {
+      throw new Error('A custom domain needs both domainName and certificateArn (ADR-022).');
+    }
+    const custom = props.domainName && props.certificateArn
+      ? {
+          domainNames: [props.domainName],
+          certificate: acm.Certificate.fromCertificateArn(this, 'SiteCertificate', props.certificateArn),
+        }
+      : {};
     const distribution = new cloudfront.Distribution(this, 'Cdn', {
+      ...custom,
       defaultBehavior: {
         origin: new origins.FunctionUrlOrigin(url),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -389,7 +407,13 @@ export class AppLambdaStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PushUrl', { value: pushStage.url });
     new cdk.CfnOutput(this, 'DeployApplication', { value: deployment.application.applicationName });
     new cdk.CfnOutput(this, 'DeploymentGroupName', { value: deployment.deploymentGroupName });
-    new cdk.CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });
+    // With a custom domain (ADR-022) the site's address is that domain; the cloudfront.net one keeps working.
+    const siteHost = props.domainName ?? distribution.distributionDomainName;
+    new cdk.CfnOutput(this, 'SiteUrl', { value: `https://${siteHost}` });
+    new cdk.CfnOutput(this, 'CloudFrontDomain', {
+      value: distribution.distributionDomainName,
+      description: 'Point the custom domain at this with a CNAME record',
+    });
     new cdk.CfnOutput(this, 'HealthUrl', { value: `https://${distribution.distributionDomainName}/api/health` });
     new cdk.CfnOutput(this, 'FunctionUrl', { value: url.url });
   }
