@@ -35,33 +35,58 @@ import '../styles/catan.css';
 			</div>
 		</noscript>
 
-		<!-- Host: create a room (src/ui/rooms.ts). -->
-		<section id="room-host" class="setup" aria-labelledby="host-title" hidden>
-			<form id="room-form" class="panel setup__form" novalidate>
-				<h2 id="host-title">Start a room</h2>
-				<p class="hint">
-					Open this page on the screen everyone can see. Enter 2 to 6 names in seating order; each
-					player then joins on their own phone with the room code.
-				</p>
-				<ol class="player-fields">
-					{
-						[1, 2, 3, 4, 5, 6].map((n) => (
-							<li class="player-field">
-								<span class={`seat seat--${n}`} aria-hidden="true">{n}</span>
-								<input class="input" name="player" aria-label={`Player ${n}`} maxlength="20" autocomplete="off" />
-							</li>
-						))
-					}
-				</ol>
-				<button class="button button--primary setup__start" type="submit">Create room</button>
+		<!-- Start or join (src/ui/rooms.ts). -->
+		<section id="room-host" class="room-start" aria-label="Start or join a room" hidden>
+			<form id="room-form" class="panel room-card" novalidate>
+				<h2>Start a room</h2>
+				<p class="hint">Open this on the screen everyone can see. Players join on their phones.</p>
+				<div class="stepper" role="group" aria-labelledby="count-label">
+					<span id="count-label" class="stepper__label">Players</span>
+					<button id="count-less" class="button action action--end stepper__button" type="button" aria-label="One fewer player">−</button>
+					<output id="count" class="stepper__value numeric" aria-live="polite">4</output>
+					<button id="count-more" class="button action action--build stepper__button" type="button" aria-label="One more player">+</button>
+				</div>
+				<button class="button action action--roll room-card__go" type="submit">
+					<Icon name="plus" />
+					Create room
+				</button>
+			</form>
+
+			<form id="code-form" class="panel room-card" novalidate>
+				<h2>Join a room</h2>
+				<p class="hint">Type the 4-letter code shown on the board.</p>
+				<label class="sr-only" for="code-input">Room code</label>
+				<input
+					id="code-input"
+					class="input code-input"
+					name="code"
+					maxlength="7"
+					autocomplete="off"
+					autocapitalize="characters"
+					spellcheck="false"
+					placeholder="ABCD"
+				/>
+				<p id="code-error" class="field-error" role="alert" hidden></p>
+				<button class="button action action--trade room-card__go" type="submit">Join</button>
 			</form>
 		</section>
 
-		<!-- Phone: pick a seat. -->
-		<section id="room-join" class="panel room-join" aria-labelledby="join-title" hidden>
-			<h2 id="join-title">Who are you?</h2>
-			<p class="hint">Pick your seat. This phone then shows your cards and your controls.</p>
-			<ol id="seat-list" class="seat-list"></ol>
+		<!-- Phone: type your name to take a seat. -->
+		<section id="room-join" class="panel room-card room-join" aria-labelledby="join-title" hidden>
+			<form id="join-form" novalidate>
+				<h2 id="join-title">What's your name?</h2>
+				<p class="hint">You'll take the next free seat. This phone then shows your cards and controls.</p>
+				<label class="sr-only" for="name-input">Your name</label>
+				<input id="name-input" class="input name-input" name="name" maxlength="20" autocomplete="nickname" required />
+				<button class="button action action--build room-card__go" type="submit">Join the game</button>
+			</form>
+		</section>
+
+		<!-- Lobby: seats filling up; the host can resize and start. -->
+		<section id="room-lobby" class="panel room-lobby" aria-labelledby="lobby-title" hidden>
+			<h2 id="lobby-title">Waiting for players</h2>
+			<ol id="lobby-seats" class="lobby-seats"></ol>
+			<div id="lobby-controls" class="lobby-controls"></div>
 		</section>
 
 		<PlayArea />

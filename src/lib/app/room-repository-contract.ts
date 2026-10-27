@@ -4,10 +4,12 @@ import type { RoomRepository } from "./room-repository";
 
 const room = (code = "ABCD") => ({
   code,
-  names: ["Ana", "Ben"],
+  seats: 4,
+  hostTokenHash: "host-hash",
   createdAt: "2026-10-23T18:00:00.000Z",
   expiresAt: 4102444800, // 2100
 });
+const sit = (name: string, tokenHash = `hash-${name}`) => ({ name, tokenHash });
 const e = (player: string): PlayEvent => ({ type: "TurnEnded", player });
 
 /**
@@ -27,8 +29,8 @@ export function describeRoomRepositoryContract(name: string, create: () => RoomR
     it("given a code already in use, creating it again is refused and the room is unchanged", async () => {
       const repo = create();
       await repo.create(room());
-      expect(await repo.create({ ...room(), names: ["X", "Y"] })).toBe(false);
-      expect((await repo.get("ABCD"))?.names).toEqual(["Ana", "Ben"]);
+      expect(await repo.create({ ...room(), seats: 6 })).toBe(false);
+      expect((await repo.get("ABCD"))?.seats).toBe(4);
     });
 
     it("given an unknown room, nothing is found", async () => {
@@ -68,17 +70,37 @@ export function describeRoomRepositoryContract(name: string, create: () => RoomR
       expect(await repo.append("NONE", 0, [e("a")])).toBe(false);
     });
 
-    it("given a free seat, it can be claimed once", async () => {
+    it("given a free seat, it can be claimed once, keeping the name", async () => {
       const repo = create();
       await repo.create(room());
-      expect(await repo.claimSeat("ABCD", 1, "hash-1")).toBe(true);
-      expect(await repo.claimSeat("ABCD", 1, "hash-2")).toBe(false);
-      expect(await repo.seats("ABCD")).toEqual(new Map([[1, "hash-1"]]));
+      expect(await repo.claimSeat("ABCD", 1, sit("Ana"))).toBe(true);
+      expect(await repo.claimSeat("ABCD", 1, sit("Ben"))).toBe(false);
+      expect(await repo.seats("ABCD")).toEqual(new Map([[1, sit("Ana")]]));
     });
 
     it("given a seat in a room that does not exist, it cannot be claimed", async () => {
       const repo = create();
-      expect(await repo.claimSeat("NONE", 0, "h")).toBe(false);
+      expect(await repo.claimSeat("NONE", 0, sit("Ana"))).toBe(false);
+    });
+
+    it("given the lobby, the seat count changes only from the count it has now", async () => {
+      const repo = create();
+      await repo.create(room());
+      expect(await repo.resize("ABCD", 4, 5)).toBe(true);
+      expect(await repo.resize("ABCD", 4, 3)).toBe(false); // someone else already changed it
+      expect((await repo.get("ABCD"))?.seats).toBe(5);
+    });
+
+    it("given a game has started, the seat count can no longer change", async () => {
+      const repo = create();
+      await repo.create(room());
+      await repo.append("ABCD", 0, [e("start")]);
+      expect(await repo.resize("ABCD", 4, 5)).toBe(false);
+      expect((await repo.get("ABCD"))?.seats).toBe(4);
+    });
+
+    it("given an unknown room, it cannot be resized", async () => {
+      expect(await create().resize("NONE", 4, 5)).toBe(false);
     });
 
     it("keeps rooms apart", async () => {
@@ -86,7 +108,7 @@ export function describeRoomRepositoryContract(name: string, create: () => RoomR
       await repo.create(room("AAAA"));
       await repo.create(room("BBBB"));
       await repo.append("AAAA", 0, [e("a")]);
-      await repo.claimSeat("AAAA", 0, "h");
+      await repo.claimSeat("AAAA", 0, sit("Ana"));
       expect(await repo.events("BBBB")).toEqual([]);
       expect((await repo.seats("BBBB")).size).toBe(0);
     });
