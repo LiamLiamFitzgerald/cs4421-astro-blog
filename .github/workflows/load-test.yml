@@ -1,0 +1,84 @@
+name: Load test
+
+# Measures the deployed site under load (#151): bots playing rooms over the API,
+# or visitors loading the game page and its assets. Manual only, because it
+# costs a little (a few cents of Lambda at the default sizes; the $5 budget kill
+# switch is the ceiling, ADR-019). Results go to the run summary and an artifact.
+#
+# Everything runs from one GitHub runner, so the site's per-address limits apply:
+# past about two rooms of four, 429s are those limits working, not failures.
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "rooms (bots play games) or pages (visitors load /catan)"
+        type: choice
+        options: [rooms, pages]
+        default: rooms
+      url:
+        description: "Site to test (leave empty for the SITE_URL variable)"
+        type: string
+        default: ""
+      rooms:
+        description: "Rooms played at once (rooms scenario)"
+        type: number
+        default: 2
+      visitors:
+        description: "Visitors at once (pages scenario)"
+        type: number
+        default: 10
+      minutes:
+        description: "How long to run"
+        type: number
+        default: 2
+      think:
+        description: "Milliseconds each bot waits before a move (0 = stress test)"
+        type: number
+        default: 2000
+      confirm:
+        description: "I understand this sends real traffic to AWS and costs a little"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: load-test
+  cancel-in-progress: false
+
+jobs:
+  load:
+    if: inputs.confirm
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the load test
+        env:
+          TARGET_URL: ${{ inputs.url || vars.SITE_URL }}
+        run: |
+          if [ -z "$TARGET_URL" ]; then echo "::error::Give a url or set the SITE_URL variable"; exit 1; fi
+          npx jiti scripts/load-test.ts --url "$TARGET_URL" --scenario "${{ inputs.scenario }}" \
+            --rooms "${{ inputs.rooms }}" --visitors "${{ inputs.visitors }}" \
+            --minutes "${{ inputs.minutes }}" --think "${{ inputs.think }}" --out results.json
+
+      - name: Keep the raw numbers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-${{ inputs.scenario }}-${{ github.run_number }}
+          path: results.json
+          retention-days: 30

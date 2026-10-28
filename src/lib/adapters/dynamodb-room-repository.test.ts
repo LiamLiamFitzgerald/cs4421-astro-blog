@@ -4,17 +4,17 @@ import { DynamoDbRoomRepository, MemoryTable } from "./dynamodb-room-repository"
 
 describeRoomRepositoryContract("DynamoDbRoomRepository", () => new DynamoDbRoomRepository(new MemoryTable()));
 
-const base = { code: "ABCD", names: ["Ana", "Ben"], createdAt: "2026-10-23T18:00:00.000Z" };
+const base = { code: "ABCD", seats: 4, hostTokenHash: "host", createdAt: "2026-10-23T18:00:00.000Z" };
 
 describe("Feature: the table layout", () => {
   it("stores the room, seats and events under one partition, events in log order", async () => {
     const table = new MemoryTable();
     const repo = new DynamoDbRoomRepository(table);
     await repo.create({ ...base, expiresAt: 4102444800 });
-    await repo.claimSeat("ABCD", 1, "h");
+    await repo.claimSeat("ABCD", 1, { name: "Ana", tokenHash: "h" });
     await repo.append("ABCD", 0, [{ type: "TurnEnded", player: "a" }]);
-    expect(await table.get("ROOM#ABCD", "META")).toMatchObject({ names: ["Ana", "Ben"], version: 1, expiresAt: 4102444800 });
-    expect(await table.get("ROOM#ABCD", "SEAT#1")).toMatchObject({ tokenHash: "h", expiresAt: 4102444800 });
+    expect(await table.get("ROOM#ABCD", "META")).toMatchObject({ seats: 4, hostTokenHash: "host", version: 1, expiresAt: 4102444800 });
+    expect(await table.get("ROOM#ABCD", "SEAT#1")).toMatchObject({ name: "Ana", tokenHash: "h", expiresAt: 4102444800 });
     expect(await table.get("ROOM#ABCD", "EVT#000001")).toMatchObject({ event: { type: "TurnEnded", player: "a" }, expiresAt: 4102444800 });
   });
 
@@ -35,7 +35,8 @@ describe("Feature: the table layout", () => {
     expect(await repo.get("ABCD")).toBeNull();
     expect(await repo.events("ABCD")).toEqual([]);
     expect((await repo.seats("ABCD")).size).toBe(0);
-    expect(await repo.claimSeat("ABCD", 0, "h")).toBe(false);
+    expect(await repo.claimSeat("ABCD", 0, { name: "Ana", tokenHash: "h" })).toBe(false);
+    expect(await repo.resize("ABCD", 4, 5)).toBe(false);
     expect(await repo.append("ABCD", 0, [{ type: "TurnEnded", player: "a" }])).toBe(false);
     expect(await repo.create({ ...base, expiresAt: now.getTime() / 1000 + 60 })).toBe(false);
   });
@@ -56,6 +57,15 @@ describe("Feature: the in-memory table follows DynamoDB's rules", () => {
     await table.delete("p", "a");
     await table.delete("p", "missing");
     expect(await table.get("p", "a")).toBeNull();
+  });
+
+  it("updates only when every condition holds, and never a missing item", async () => {
+    const table = new MemoryTable();
+    await table.putIfAbsent({ pk: "p", sk: "META", seats: 4, version: 0 });
+    expect(await table.updateIf("p", "META", { seats: 5 }, { seats: 3 })).toBe(false);
+    expect(await table.updateIf("p", "META", { seats: 5 }, { seats: 4, version: 0 })).toBe(true);
+    expect((await table.get("p", "META"))?.["seats"]).toBe(5);
+    expect(await table.updateIf("p", "missing", { seats: 5 }, {})).toBe(false);
   });
 
   it("refuses an append to a partition with no META", async () => {

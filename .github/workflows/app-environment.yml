@@ -75,6 +75,9 @@ jobs:
           # ADR-015: where alarm emails go. A repository variable, not a secret
           # and not committed. Leave it unset to deploy without email alerts.
           ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+          # ADR-022: optional custom domain and its validated us-east-1 certificate.
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          SITE_CERT_ARN: ${{ vars.SITE_CERT_ARN }}
 
       - name: Smoke test (live, ready, pages, assets)
         if: env.ACTION != 'destroy' && env.ACTION != 'revive'
@@ -101,6 +104,8 @@ jobs:
         working-directory: cdk
         env:
           ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          SITE_CERT_ARN: ${{ vars.SITE_CERT_ARN }}
         run: |
           # Traffic during the 5-minute canary, so the broken 10% answers 500s
           # and the ServerErrors alarm fires.

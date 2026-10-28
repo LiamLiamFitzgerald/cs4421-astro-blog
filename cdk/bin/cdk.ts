@@ -46,4 +46,7 @@ new AppLambdaStack(app, 'AppLambdaStack', {
   // then capped at 10 by AWS anyway). The kill switch defaults to a $5 budget.
   maxConcurrency: numberOrNone(app.node.tryGetContext('maxConcurrency'), undefined),
   budgetUsd: numberOrNone(app.node.tryGetContext('budgetUsd'), 5),
+  // ADR-022: custom domain, from the SITE_DOMAIN and SITE_CERT_ARN repository variables.
+  domainName: process.env.SITE_DOMAIN || undefined,
+  certificateArn: process.env.SITE_CERT_ARN || undefined,
 });
