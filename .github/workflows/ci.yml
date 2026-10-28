@@ -32,7 +32,14 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+        # First-parent only: lint the commits made on this branch, not history merged
+        # in from elsewhere (main's week-one commits predate the convention, #143).
+        run: |
+          status=0
+          for sha in $(git rev-list --first-parent --no-merges "$BASE_SHA..$HEAD_SHA"); do
+            git log -1 --format=%B "$sha" | npx commitlint --verbose || status=1
+          done
+          exit $status
 
       - name: Lint
         run: npm run lint
