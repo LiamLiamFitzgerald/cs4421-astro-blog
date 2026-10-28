@@ -3,9 +3,10 @@ name: Deploy Static Site
 # ADR-018: publishes the Catan app built as plain files (`npm run build:static`)
 # to S3 behind CloudFront. The game runs in the browser, so it works without a
 # server; the /api endpoints only exist on the server deploy (App Environment).
-# Manual only: run it from Actions when the static site should be updated.
+# Run by hand, or called by Release Please when a release is created (ADR-023).
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

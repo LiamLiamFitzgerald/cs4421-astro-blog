@@ -2,6 +2,9 @@ name: Release Please
 
 # Reads Conventional Commits on main and keeps a release PR open that bumps the
 # version, updates CHANGELOG.md and, when merged, creates the tag and GitHub release.
+# When it has just created a release, it deploys both sites from that commit
+# (ADR-023). It calls the deploy workflows directly: a release made with the
+# built-in token cannot trigger other workflows by itself.
 on:
   push:
     branches: [main]
@@ -13,8 +16,28 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  deploy-app:
+    name: Deploy the SSR site (${{ needs.release-please.outputs.tag_name }})
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/app-environment.yml
+    with:
+      action: deploy
+    secrets: inherit
+
+  deploy-static:
+    name: Deploy the static site (${{ needs.release-please.outputs.tag_name }})
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/deploy-static.yml
+    secrets: inherit

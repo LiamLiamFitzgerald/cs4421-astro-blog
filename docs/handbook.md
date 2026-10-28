@@ -139,6 +139,10 @@ The site runs in server mode on the Astro Node adapter (ADR-001).
   **Uptime check** workflow runs it while the `SITE_URL` repository variable is
   set. `docs/runbook.md` covers alarms, replaying a game, rollback and the
   rollback drill (`drill` in App Environment, ADR-016).
+- **Deploys follow releases (ADR-023):** when release-please creates a release
+  on `main`, the same run deploys the SSR site and the static site. Merging to
+  `develop` never deploys. The manual workflows remain for rollbacks, drills,
+  revive and destroy.
 - `docker build -t catan-app .` builds the production image; CI builds it too.
   `docker build --target lambda .` adds the AWS Lambda Web Adapter for Lambda
   (pulled from public.ecr.aws, which rate-limits anonymous pulls; CI retries).
