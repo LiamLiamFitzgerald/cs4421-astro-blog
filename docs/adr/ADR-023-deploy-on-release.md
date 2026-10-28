@@ -2,7 +2,7 @@
 
 - **Status:** Proposed (2026-10-28)
 - **Deciders:** Liam Fitzgerald
-- **Issue:** #155
+- **Issue:** #157
 
 ## Context
 
