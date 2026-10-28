@@ -1,0 +1,66 @@
+name: Deploy Static Site
+
+# ADR-018: publishes the Catan app built as plain files (`npm run build:static`)
+# to S3 behind CloudFront. The game runs in the browser, so it works without a
+# server; the /api endpoints only exist on the server deploy (App Environment).
+# Manual only: run it from Actions when the static site should be updated.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-static
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            cdk/package-lock.json
+
+      - name: Install site dependencies
+        run: npm ci
+
+      - name: Build the static site
+        run: npm run build:static
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Install CDK dependencies
+        run: npm ci
+        working-directory: cdk
+
+      - name: Deploy with CDK
+        run: npx cdk deploy StaticSiteStack --require-approval never --outputs-file outputs.json
+        working-directory: cdk
+
+      - name: Check the published site
+        run: |
+          SITE=$(node -p "require('./cdk/outputs.json').StaticSiteStack.StaticSiteUrl")
+          echo "Static site: $SITE" | tee -a "$GITHUB_STEP_SUMMARY"
+          check() {
+            code=$(curl -s -o /tmp/page.html -w '%{http_code}' "$SITE$1" || true)
+            [ "$code" = "$2" ] || { echo "::error::$1 returned $code, expected $2"; exit 1; }
+            grep -q "$3" /tmp/page.html || { echo "::error::$1 did not contain $3"; exit 1; }
+            echo "ok $1 ($code)"
+          }
+          check / 200 '<html'
+          check /catan 200 'id="play"'
+          check /no-such-page 404 'not on the map'

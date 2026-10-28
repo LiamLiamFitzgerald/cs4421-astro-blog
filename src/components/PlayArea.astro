@@ -1,0 +1,35 @@
+---
+/**
+ * The board, turn panel, players and event log of a played game. The ids are
+ * what src/ui/play.ts draws into; used by /catan and /rooms.
+ */
+import Icon from './Icon.astro';
+---
+
+<section id="play" class="play" aria-label="Game in progress" hidden>
+	<div id="play-winner" class="notice notice--success" role="status" hidden>
+		<Icon name="crown" />
+		<div class="notice__body"></div>
+	</div>
+	<div class="game__layout">
+		<figure class="game__board">
+			<!-- Big-moment banner (ADR-020). Hidden from screen readers: the live region already says it. -->
+			<div id="play-banner" class="banner" aria-hidden="true" hidden></div>
+			<svg id="play-board" class="board" aria-label="The board, with everyone's pieces"></svg>
+			<ol id="play-board-list" class="sr-only" aria-label="Hexes on this board"></ol>
+			<figcaption id="play-board-hint" class="hint board-hint" aria-live="polite"></figcaption>
+		</figure>
+		<div class="game__side">
+			<section id="play-turn" class="panel turn" aria-labelledby="turn-title"></section>
+			<h2 class="sr-only">Players</h2>
+			<div id="play-players" class="players stack"></div>
+		</div>
+	</div>
+	<details class="history">
+		<summary>
+			Event log <span class="history__count">(<span id="play-event-count">0</span> events)</span>
+		</summary>
+		<p class="hint">Every move is stored as an event, newest first. The game is rebuilt from this list.</p>
+		<ol id="play-events" reversed></ol>
+	</details>
+</section>

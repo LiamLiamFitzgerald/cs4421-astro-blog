@@ -1,0 +1,167 @@
+name: App Environment (Lambda)
+
+# Lifecycle of AppLambdaStack (ADR-010): the app image on AWS Lambda behind
+# CloudFront. Nothing runs while idle, so it costs close to nothing, but it is
+# still only deployed on demand:
+#   deploy   - build the image, deploy (CodeDeploy canary), run the smoke test
+#   rehearse - deploy, smoke-test, then ALWAYS destroy (proof it works)
+#   drill    - rollback drill (ADR-016): deploy a good release, then one that
+#              fails on purpose under traffic, and prove CodeDeploy rolled it
+#              back and the good release still serves. Leaves the good one up.
+#   revive   - turn the site back on after the budget kill switch (ADR-019)
+#   destroy  - delete the stack
+# The nightly safety-net destroy used for Fargate (ADR-001) is no longer needed.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do with the app environment"
+        type: choice
+        options: [deploy, rehearse, drill, revive, destroy]
+        default: rehearse
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-environment
+  cancel-in-progress: false
+
+env:
+  ACTION: ${{ github.event.inputs.action }}
+  # ADR-019 cost ceilings, the same on every deploy (a deploy without them would remove them).
+  CDK_FLAGS: -c maxConcurrency=${{ vars.MAX_CONCURRENCY || 'none' }} -c budgetUsd=${{ vars.BUDGET_USD || '5' }}
+
+jobs:
+  environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      # Signed-in pulls from public.ecr.aws (the Lambda Web Adapter) get a much
+      # higher rate limit than anonymous ones.
+      - name: Sign in to Amazon ECR Public
+        if: env.ACTION != 'destroy' && env.ACTION != 'revive'
+        run: |
+          aws ecr-public get-login-password --region us-east-1 \
+            | docker login --username AWS --password-stdin public.ecr.aws \
+            || echo "Could not sign in; falling back to anonymous pulls"
+
+      - name: Install CDK dependencies
+        run: npm ci
+        working-directory: cdk
+
+      - name: Deploy with CDK (builds and pushes the image, canary via CodeDeploy)
+        if: env.ACTION != 'destroy' && env.ACTION != 'revive'
+        run: npx cdk deploy AppLambdaStack $CDK_FLAGS --require-approval never --outputs-file outputs.json
+        working-directory: cdk
+        env:
+          # ADR-015: where alarm emails go. A repository variable, not a secret
+          # and not committed. Leave it unset to deploy without email alerts.
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+          # ADR-022: optional custom domain and its validated us-east-1 certificate.
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          SITE_CERT_ARN: ${{ vars.SITE_CERT_ARN }}
+
+      - name: Smoke test (live, ready, pages, assets)
+        if: env.ACTION != 'destroy' && env.ACTION != 'revive'
+        run: |
+          SITE=$(node -p "require('./cdk/outputs.json').AppLambdaStack.SiteUrl")
+          echo "SITE=$SITE" >> "$GITHUB_ENV"
+          echo "Site: $SITE" >> "$GITHUB_STEP_SUMMARY"
+          bash scripts/smoke-test.sh "$SITE"
+
+      # ---------------------------------------------------- rollback drill (ADR-016)
+
+      - name: "Drill: record the good release"
+        if: env.ACTION == 'drill'
+        working-directory: cdk
+        run: |
+          FN=$(node -p "require('./outputs.json').AppLambdaStack.FunctionName")
+          GOOD=$(aws lambda get-alias --function-name "$FN" --name live --query FunctionVersion --output text)
+          echo "FN=$FN" >> "$GITHUB_ENV"
+          echo "GOOD_VERSION=$GOOD" >> "$GITHUB_ENV"
+          echo "Good release: version $GOOD" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: "Drill: deploy a release that fails on purpose, under traffic"
+        if: env.ACTION == 'drill'
+        working-directory: cdk
+        env:
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          SITE_CERT_ARN: ${{ vars.SITE_CERT_ARN }}
+        run: |
+          # Traffic during the 5-minute canary, so the broken 10% answers 500s
+          # and the ServerErrors alarm fires.
+          ( for i in $(seq 1 150); do curl -s -o /dev/null "$SITE/catan" || true; sleep 4; done ) &
+          TRAFFIC=$!
+          if npx cdk deploy AppLambdaStack $CDK_FLAGS -c rollbackDrill=true --require-approval never; then
+            kill "$TRAFFIC" || true
+            echo "::error::The broken release was NOT rolled back. The canary alarm did not stop it."
+            exit 1
+          fi
+          kill "$TRAFFIC" || true
+          echo "The broken release was rejected, as intended." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: "Drill: prove the good release is still live"
+        if: env.ACTION == 'drill'
+        working-directory: cdk
+        run: |
+          NOW=$(aws lambda get-alias --function-name "$FN" --name live --query FunctionVersion --output text)
+          DRILL=$(aws lambda get-function-configuration --function-name "$FN" --qualifier live \
+            --query 'Environment.Variables.ROLLBACK_DRILL' --output text)
+          echo "live alias: version $NOW (was $GOOD_VERSION), ROLLBACK_DRILL=$DRILL" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$NOW" = "$GOOD_VERSION" ] || { echo "::error::live moved to version $NOW"; exit 1; }
+          [ "$DRILL" = "None" ] || { echo "::error::the live release is the broken one"; exit 1; }
+          APP=$(node -p "require('./outputs.json').AppLambdaStack.DeployApplication")
+          GROUP=$(node -p "require('./outputs.json').AppLambdaStack.DeploymentGroupName")
+          LAST=$(aws deploy list-deployments --application-name "$APP" --deployment-group-name "$GROUP" \
+            --query 'deployments[0]' --output text)
+          aws deploy get-deployment --deployment-id "$LAST" \
+            --query 'deploymentInfo.{status:status,rollback:rollbackInfo,error:errorInformation}' --output json \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: "Drill: smoke test after the rollback"
+        if: env.ACTION == 'drill'
+        run: SMOKE_ATTEMPTS=4 bash scripts/smoke-test.sh "$SITE"
+
+      # ------------------------------------------------- revive after the kill switch (ADR-019)
+
+      - name: "Revive: give the app its concurrency back"
+        if: env.ACTION == 'revive'
+        env:
+          MAX_CONCURRENCY: ${{ vars.MAX_CONCURRENCY }}
+        run: |
+          FN=$(aws cloudformation describe-stacks --stack-name AppLambdaStack \
+            --query "Stacks[0].Outputs[?OutputKey=='FunctionName'].OutputValue" --output text)
+          if [ -n "$MAX_CONCURRENCY" ] && [ "$MAX_CONCURRENCY" != "none" ]; then
+            aws lambda put-function-concurrency --function-name "$FN" --reserved-concurrent-executions "$MAX_CONCURRENCY"
+          else
+            aws lambda delete-function-concurrency --function-name "$FN"
+          fi
+          echo "Site turned back on ($FN)." | tee -a "$GITHUB_STEP_SUMMARY"
+          SITE=$(aws cloudformation describe-stacks --stack-name AppLambdaStack \
+            --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text)
+          SMOKE_ATTEMPTS=6 bash scripts/smoke-test.sh "$SITE"
+
+      - name: Destroy AppLambdaStack
+        # Runs for destroy, and always after a rehearsal.
+        if: always() && (env.ACTION == 'destroy' || env.ACTION == 'rehearse')
+        run: npx cdk destroy AppLambdaStack --force
+        working-directory: cdk

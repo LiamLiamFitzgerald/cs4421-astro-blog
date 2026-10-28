@@ -1,0 +1,12 @@
+node_modules
+dist
+.astro
+cdk
+reports
+.stryker-tmp
+.git
+.github
+docs
+e2e
+playwright-report
+test-results

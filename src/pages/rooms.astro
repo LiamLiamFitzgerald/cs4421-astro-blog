@@ -1,0 +1,101 @@
+---
+import Icon from '../components/Icon.astro';
+import PlayArea from '../components/PlayArea.astro';
+import Layout from '../layouts/Layout.astro';
+import '../styles/board.css';
+import '../styles/catan.css';
+---
+
+<Layout title="Rooms" description="Put the board on one screen and play from your phones.">
+	<div class="scoreboard rooms">
+		<p id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+
+		<div class="toolbar">
+			<h1>Rooms</h1>
+		</div>
+
+		<div id="room-bar" class="panel room-bar" hidden></div>
+		<div id="failure" class="notice notice--error" role="alert" hidden></div>
+
+		<div id="no-server" class="notice" hidden>
+			<Icon name="info" />
+			<div class="notice__body">
+				<p class="notice__title">Rooms need the server version of the site</p>
+				<p>
+					This copy of the site is plain files, so there is nothing to keep a shared game. You can still
+					<a href="/catan">play on one device</a>.
+				</p>
+			</div>
+		</div>
+
+		<p id="loading" class="hint" role="status">Loading the room…</p>
+		<noscript>
+			<div class="notice notice--error">
+				<div class="notice__body"><p>Rooms need JavaScript. Turn it on and reload.</p></div>
+			</div>
+		</noscript>
+
+		<!-- Start or join (src/ui/rooms.ts). -->
+		<section id="room-host" class="room-start" aria-label="Start or join a room" hidden>
+			<form id="room-form" class="panel room-card" novalidate>
+				<h2>Start a room</h2>
+				<p class="hint">Open this on the screen everyone can see. Players join on their phones.</p>
+				<div class="stepper" role="group" aria-labelledby="count-label">
+					<span id="count-label" class="stepper__label">Players</span>
+					<button id="count-less" class="button action action--end stepper__button" type="button" aria-label="One fewer player">−</button>
+					<output id="count" class="stepper__value numeric" aria-live="polite">4</output>
+					<button id="count-more" class="button action action--build stepper__button" type="button" aria-label="One more player">+</button>
+				</div>
+				<button class="button action action--roll room-card__go" type="submit">
+					<Icon name="plus" />
+					Create room
+				</button>
+			</form>
+
+			<form id="code-form" class="panel room-card" novalidate>
+				<h2>Join a room</h2>
+				<p class="hint">Type the 4-letter code shown on the board.</p>
+				<label class="sr-only" for="code-input">Room code</label>
+				<input
+					id="code-input"
+					class="input code-input"
+					name="code"
+					maxlength="7"
+					autocomplete="off"
+					autocapitalize="characters"
+					spellcheck="false"
+					placeholder="ABCD"
+				/>
+				<p id="code-error" class="field-error" role="alert" hidden></p>
+				<button class="button action action--trade room-card__go" type="submit">Join</button>
+			</form>
+		</section>
+
+		<!-- Phone: type your name to take a seat. -->
+		<section id="room-join" class="panel room-card room-join" aria-labelledby="join-title" hidden>
+			<form id="join-form" novalidate>
+				<h2 id="join-title">What's your name?</h2>
+				<p class="hint">You'll take the next free seat. This phone then shows your cards and controls.</p>
+				<label class="sr-only" for="name-input">Your name</label>
+				<input id="name-input" class="input name-input" name="name" maxlength="20" autocomplete="nickname" required />
+				<button class="button action action--build room-card__go" type="submit">Join the game</button>
+			</form>
+		</section>
+
+		<!-- Lobby: seats filling up; the host can resize and start. -->
+		<section id="room-lobby" class="panel room-lobby" aria-labelledby="lobby-title" hidden>
+			<h2 id="lobby-title">Waiting for players</h2>
+			<ol id="lobby-seats" class="lobby-seats"></ol>
+			<div id="lobby-controls" class="lobby-controls"></div>
+		</section>
+
+		<PlayArea />
+	</div>
+</Layout>
+
+<script>
+	import { reportError } from '../ui/report-error';
+	import { startRooms } from '../ui/rooms';
+
+	startRooms(reportError);
+</script>

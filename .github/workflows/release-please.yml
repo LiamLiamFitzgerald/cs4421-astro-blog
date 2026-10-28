@@ -1,0 +1,20 @@
+name: Release Please
+
+# Reads Conventional Commits on main and keeps a release PR open that bumps the
+# version, updates CHANGELOG.md and, when merged, creates the tag and GitHub release.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

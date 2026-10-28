@@ -1,0 +1,143 @@
+---
+import Icon from '../components/Icon.astro';
+import Layout from '../layouts/Layout.astro';
+import '../styles/board.css';
+import '../styles/catan.css';
+import PlayArea from '../components/PlayArea.astro';
+---
+
+<Layout title="Play" description="Play Catan on one device, or keep score of a game on a real board.">
+	<div class="scoreboard">
+		<p id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+
+		<div class="toolbar">
+			<h1>Catan</h1>
+			<button id="new-game" class="button" type="button" hidden>
+				<Icon name="plus" />
+				New game
+			</button>
+		</div>
+
+		<div id="storage-note" class="notice" hidden>
+			<Icon name="info" />
+			<div class="notice__body">
+				<p>
+					This browser is not letting the site save data, so the game will be lost if you reload or
+					close the tab.
+				</p>
+			</div>
+		</div>
+
+		<div id="failure" class="notice notice--error" role="alert" hidden></div>
+
+		<p id="loading" class="hint" role="status">Loading your saved game…</p>
+		<noscript>
+			<div class="notice notice--error">
+				<div class="notice__body"><p>The scoreboard needs JavaScript. Turn it on and reload.</p></div>
+			</div>
+		</noscript>
+
+		<!-- Setup: shown when there is no game in progress. -->
+		<section id="setup" class="setup" aria-labelledby="setup-title" hidden>
+			<figure class="setup__board">
+				<svg id="setup-board" class="board" aria-label="The board for this game"></svg>
+				<ol id="setup-board-list" class="sr-only" aria-label="Hexes on this board"></ol>
+				<figcaption>
+					<button id="deal" class="button button--small" type="button">
+						<Icon name="dice" />
+						Deal another board
+					</button>
+				</figcaption>
+			</figure>
+
+			<form id="setup-form" class="panel setup__form" novalidate>
+				<fieldset class="modes">
+					<legend>How do you want to play?</legend>
+					<label class="mode">
+						<input type="radio" name="mode" value="play" checked />
+						<span class="mode__text">
+							<span class="mode__name">Play on the site</span>
+							<span class="hint">Place pieces, roll dice and collect resources, passing this device round.</span>
+						</span>
+					</label>
+					<label class="mode">
+						<input type="radio" name="mode" value="score" />
+						<span class="mode__text">
+							<span class="mode__name">Just keep score</span>
+							<span class="hint">Play on a real board and record points here.</span>
+						</span>
+					</label>
+				</fieldset>
+				<h2 id="setup-title">Who is playing?</h2>
+				<p class="hint">Enter 2 to 6 names in seating order. The first player goes first.</p>
+				<ol id="player-fields" class="player-fields"></ol>
+				<button id="add-player" class="button button--quiet button--small" type="button">
+					<Icon name="plus" />
+					Add a player
+				</button>
+				<p id="setup-error" class="field-error" role="alert" hidden></p>
+				<button class="button button--primary setup__start" type="submit">Start game</button>
+			</form>
+		</section>
+
+		<!-- Game: shown while a game is in progress or finished. -->
+		<section id="game" class="game" aria-label="Game in progress" hidden>
+			<div id="winner" class="notice notice--success" role="status" hidden>
+				<Icon name="crown" />
+				<div class="notice__body"></div>
+			</div>
+
+			<div class="game__layout">
+				<figure class="game__board">
+					<svg id="game-board" class="board" aria-label="This game's board"></svg>
+					<ol id="game-board-list" class="sr-only" aria-label="Hexes on this board"></ol>
+					<p id="no-board" class="hint no-board" hidden>
+						This game was started before boards were dealt, so it has no board. Start a new game to
+						get one.
+					</p>
+				</figure>
+
+				<div class="game__side">
+					<h2 class="sr-only">Players</h2>
+					<div id="players" class="players stack"></div>
+				</div>
+			</div>
+
+			<details class="history">
+				<summary>
+					Event log <span class="history__count">(<span id="event-count">0</span> events)</span>
+				</summary>
+				<p class="hint">
+					Every action is stored as an event, newest first. Scores and awards are worked out from
+					this list.
+				</p>
+				<ol id="events" reversed></ol>
+			</details>
+		</section>
+
+		<!-- Play mode: a game played on the site (src/ui/play.ts). -->
+		<PlayArea />
+
+		<dialog id="confirm-new-game" class="dialog" aria-labelledby="confirm-title">
+			<form method="dialog">
+				<h2 id="confirm-title">Discard this game?</h2>
+				<p>
+					The scores and event log for <strong id="confirm-players"></strong> will be deleted. This
+					cannot be undone.
+				</p>
+				<div class="dialog__actions">
+					<button class="button" value="keep" autofocus>Keep playing</button>
+					<button class="button button--danger" value="discard">Discard and start over</button>
+				</div>
+			</form>
+		</dialog>
+	</div>
+</Layout>
+
+<script>
+	import { reportError } from '../ui/report-error';
+	import { startScoreboard } from '../ui/scoreboard';
+
+	// Unexpected failures go to the console and to the server log (/api/client-errors).
+	startScoreboard(reportError);
+</script>

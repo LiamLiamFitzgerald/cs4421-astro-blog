@@ -1,0 +1,992 @@
+/**
+ * Browser controller for play mode on /catan. Like the scoreboard it holds no
+ * rules: legal spots, costs and what is missing come from the catan-play
+ * queries, and every message comes from src/lib/app/play-view.ts (ADR-008).
+ */
+import type { EventStore } from '../lib/app/event-store';
+import { executePlayCommand, loadPlay } from '../lib/app/play-service';
+import {
+	describeCorner,
+	describeEdge,
+	describeHand,
+	describeHarbour,
+	describeHex,
+	describePlayEvent,
+	describePlayViolation,
+	describeRoll,
+	describeStep,
+	CARD_EFFECTS,
+	CARD_NAMES,
+	PIECE_NAMES,
+	tradeableResources,
+} from '../lib/app/play-view';
+import type { PlayCommand } from '../lib/games/catan-play/commands';
+import type { PlayEvent } from '../lib/games/catan-play/events';
+import { evolve as evolveOne, replayPlay } from '../lib/games/catan-play/evolve';
+import {
+	actingPlayer,
+	buildOptions,
+	currentPlayer,
+	devCardOptions,
+	hiddenPoints,
+	legalRoads,
+	tradeRate,
+	visiblePoints,
+	expectedStep,
+	legalRobberHexes,
+	legalSetupRoads,
+	legalSetupSettlements,
+	longestRoadLength,
+	piecesLeft,
+	points,
+} from '../lib/games/catan-play/queries';
+import { DEV_CARD_COST, emptyHand, type Hand, handSize, missing, type Piece, RESOURCES, type Resource } from '../lib/games/catan-play/resources';
+import type { PlayState } from '../lib/games/catan-play/state';
+import { TOPOLOGY } from '../lib/games/catan-play/topology';
+import { WINNING_POINTS } from '../lib/games/catan/score';
+import { type BoardOverlay, renderBoard } from './board';
+import { describeEffect, detectEffects, ranking } from '../lib/app/play-effects';
+import { el, type Feedback, required } from './feedback';
+import { iconElement, type IconName } from './icons';
+
+const GAME_ID = 'local';
+
+/** What a play screen draws: the game as this screen may see it, and its log in words. */
+export interface PlaySnapshot {
+	readonly state: PlayState;
+	/** The event log in words, oldest first. */
+	readonly history: readonly string[];
+	/** Resource card counts, when other players' cards have been removed from `state` (rooms). */
+	readonly cardCounts?: Readonly<Record<string, number>>;
+	readonly devCardCounts?: Readonly<Record<string, number>>;
+}
+
+export type PlayOutcome =
+	| { readonly ok: true; readonly snapshot: PlaySnapshot; readonly announce: string }
+	| { readonly ok: false; readonly message: string };
+
+/**
+ * Where a play screen gets its game and sends its moves: this device's storage,
+ * or a shared room on the server (ADR-019). The screen holds no rules either way.
+ */
+export interface PlaySource {
+	snapshot(): Promise<PlaySnapshot>;
+	run(command: PlayCommand): Promise<PlayOutcome>;
+}
+
+/** Who is looking: everyone round one device, the shared board, or one player's phone. */
+export type Viewer = { readonly kind: 'device' } | { readonly kind: 'board' } | { readonly kind: 'seat'; readonly player: string };
+
+/** The log in words, folding once (each event is described with the state just after it). */
+export function describeLog(log: readonly PlayEvent[]): string[] {
+	let state = replayPlay([]);
+	return log.map((event) => {
+		state = evolveOne(state, event);
+		return describePlayEvent(event, state);
+	});
+}
+
+/** What a screen reader hears after a move: what happened, then whose input is needed. */
+export function announcement(state: PlayState, added: readonly PlayEvent[]): string {
+	const parts = added.map((event) =>
+		event.type === 'DiceRolled' && state.lastRoll
+			? describeRoll(state.lastRoll, state.players)
+			: `${describePlayEvent(event, state)}.`,
+	);
+	const next = actingPlayer(state);
+	const step = expectedStep(state);
+	if (state.winner) parts.push(`${state.winner} wins with ${points(state, state.winner)} points.`);
+	else if (next && step && step !== 'roll' && step !== 'build-or-end' && step !== 'place-settlement' && step !== 'place-road') {
+		parts.push(`${next}: ${describeStep(step)}`);
+	}
+	else if (next && step && added.some((e) => e.type === 'TurnEnded' || e.type === 'SetupRoadPlaced')) {
+		parts.push(`${next}'s turn. ${describeStep(step)}`);
+	}
+	return parts.join(' ');
+}
+
+/** A game kept in this browser's storage, played round one device. */
+function localSource(store: EventStore<PlayEvent>): PlaySource {
+	return {
+		async snapshot() {
+			const log = await store.load(GAME_ID);
+			return { state: replayPlay(log), history: describeLog(log) };
+		},
+		async run(command) {
+			const result = await executePlayCommand(store, GAME_ID, command);
+			if (!result.ok) return { ok: false, message: describePlayViolation(result.error) };
+			const log = await store.load(GAME_ID);
+			return {
+				ok: true,
+				snapshot: { state: result.value.state, history: describeLog(log) },
+				announce: announcement(result.value.state, result.value.events),
+			};
+		},
+	};
+}
+
+export interface PlayView {
+	/** True when a played game is stored. */
+	isActive(): Promise<boolean>;
+	/** Draws the stored game. */
+	render(): Promise<void>;
+	/** Starts a game; returns the reason when the rules refuse it. */
+	start(players: readonly string[], seed: number): Promise<string | null>;
+	players(): Promise<readonly string[]>;
+	/** Deletes the stored game. */
+	clear(): void;
+}
+
+const RESOURCE_ICONS: Readonly<Record<Resource, IconName>> = {
+	lumber: 'lumber',
+	brick: 'brick',
+	wool: 'wool',
+	grain: 'grain',
+	ore: 'ore',
+};
+const PIECE_ICONS: Readonly<Record<Piece, IconName>> = { road: 'road', settlement: 'settlement', city: 'city' };
+
+/** A fair random integer from 0 to n − 1 from the browser's secure source. */
+function randomBelow(n: number): number {
+	if (n <= 1) return 0;
+	const limit = Math.floor(0x100000000 / n) * n;
+	const buffer = new Uint32Array(1);
+	for (;;) {
+		crypto.getRandomValues(buffer);
+		const value = buffer[0] ?? 0;
+		if (value < limit) return value % n;
+	}
+}
+
+/** One fair die from the browser's secure random source (no modulo bias). */
+function rollDie(): number {
+	const buffer = new Uint8Array(1);
+	for (;;) {
+		crypto.getRandomValues(buffer);
+		const value = buffer[0] ?? 255;
+		if (value < 252) return (value % 6) + 1;
+	}
+}
+
+export function createPlayView(
+	store: EventStore<PlayEvent> & { clear?(id: string): void },
+	feedback: Feedback,
+	show: (screen: 'play') => void,
+): PlayView {
+	const screen = mountPlay(localSource(store), feedback, show, { kind: 'device' });
+	return {
+		async isActive() {
+			return (await loadPlay(store, GAME_ID)).started;
+		},
+		render: screen.render,
+		async start(players, seed) {
+			const message = await screen.run({ type: 'StartGame', players, seed });
+			screen.forget();
+			return message;
+		},
+		async players() {
+			return (await loadPlay(store, GAME_ID)).players;
+		},
+		clear() {
+			store.clear?.(GAME_ID);
+			screen.forget();
+		},
+	};
+}
+
+export interface PlayScreen {
+	/** Draws the game as it is now. */
+	render(): Promise<void>;
+	/** Sends a move; returns the reason when it is refused. */
+	run(command: PlayCommand): Promise<string | null>;
+	/** Shows a game that changed elsewhere (another phone moved), announcing what is new. */
+	update(snapshot: PlaySnapshot): Promise<void>;
+	/** Drops any half-finished choice (build mode, a message). */
+	forget(): void;
+}
+
+/** Draws a played game into the #play markup and wires its controls to `source`. */
+export function mountPlay(
+	source: PlaySource,
+	feedback: Feedback,
+	show: (screen: 'play') => void,
+	viewer: Viewer,
+): PlayScreen {
+	const section = required<HTMLElement>('#play');
+	const board = required<SVGSVGElement>('#play-board');
+	const boardList = required<HTMLOListElement>('#play-board-list');
+	const boardHint = required<HTMLElement>('#play-board-hint');
+	const turn = required<HTMLElement>('#play-turn');
+	const roster = required<HTMLElement>('#play-players');
+	const winner = required<HTMLElement>('#play-winner');
+	const events = required<HTMLOListElement>('#play-events');
+	const eventCount = required<HTMLElement>('#play-event-count');
+	const banner = required<HTMLElement>('#play-banner');
+	const boardFigure = board.closest('figure');
+	let bannerTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Leaderboard ranks at the last render, to highlight a player moving up. */
+	let lastRanks = new Map<string, number>();
+
+	/** Replays a CSS animation on an element by toggling its class (ADR-020). */
+	const pulse = (node: Element | null | undefined, className: string) => {
+		if (!node) return;
+		node.classList.remove(className);
+		void (node as HTMLElement).offsetWidth; // restart the animation
+		node.classList.add(className);
+		node.addEventListener('animationend', () => node.classList.remove(className), { once: true });
+	};
+
+	/** Shows the big moments between two views: a banner, and the board or a row reacting. */
+	function celebrate(before: PlaySnapshot | null, after: PlaySnapshot) {
+		const effects = detectEffects(before, after);
+		const top = effects[0];
+		if (!top) return;
+		const words = describeEffect(top);
+		banner.replaceChildren(iconElement(words.icon as IconName), document.createTextNode(words.text));
+		banner.className = `banner banner--${top.kind}`;
+		banner.hidden = false;
+		pulse(banner, 'banner--show');
+		if (bannerTimer) clearTimeout(bannerTimer);
+		bannerTimer = setTimeout(() => (banner.hidden = true), 2600);
+		for (const effect of effects) {
+			if (effect.kind === 'robber' || effect.kind === 'seven') pulse(boardFigure, 'board--shake');
+			if (effect.kind === 'stolen') pulse(roster.querySelector(`[data-player="${CSS.escape(effect.victim)}"]`), 'row--robbed');
+			if (effect.kind === 'lead' || effect.kind === 'win') pulse(roster.querySelector(`[data-player="${CSS.escape(effect.player)}"]`), 'row--cheer');
+		}
+	}
+
+	let mode: Piece | null = null;
+	let busy = false;
+	/** The snapshot being shown, for card counts that are not in the state. */
+	let shown: PlaySnapshot | null = null;
+	/** Whether this screen may make the move the game is waiting for. */
+	const canAct = (state: PlayState): boolean =>
+		viewer.kind === 'device' || (viewer.kind === 'seat' && actingPlayer(state) === viewer.player && !state.winner);
+	/** Whether this screen may see `player`'s cards. */
+	const seesCardsOf = (state: PlayState, player: string): boolean =>
+		viewer.kind === 'device' || state.winner !== null || (viewer.kind === 'seat' && viewer.player === player);
+	const cardCount = (state: PlayState, player: string): number =>
+		shown?.cardCounts?.[player] ?? handSize(state.hands[player] ?? emptyHand);
+	const devCardCount = (state: PlayState, player: string): number =>
+		shown?.devCardCounts?.[player] ?? (state.devCards[player] ?? []).length;
+	let lastMessage = '';
+	let rolledJustNow = false;
+	/** What the last action changed, so the next render can show it briefly. */
+	let fresh: { vertices: Set<number>; edges: Set<number>; gains: Record<string, Partial<Record<Resource, number>>> } = {
+		vertices: new Set(),
+		edges: new Set(),
+		gains: {},
+	};
+
+	function changes(before: PlayState, after: PlayState) {
+		const changedVertices = Object.keys(after.buildings)
+			.map(Number)
+			.filter((v) => before.buildings[v]?.kind !== after.buildings[v]?.kind);
+		const newEdges = Object.keys(after.roads)
+			.map(Number)
+			.filter((e) => before.roads[e] === undefined);
+		const gains: Record<string, Partial<Record<Resource, number>>> = {};
+		for (const p of after.players) {
+			for (const r of RESOURCES) {
+				const gain = (after.hands[p]?.[r] ?? 0) - (before.hands[p]?.[r] ?? 0);
+				if (gain > 0) gains[p] = { ...gains[p], [r]: gain };
+			}
+		}
+		return { vertices: new Set(changedVertices), edges: new Set(newEdges), gains };
+	}
+
+	const seatOf = (state: PlayState, player: string) => state.players.indexOf(player) + 1;
+
+	/** Runs a command; violations show beside the turn controls, failures get Try again. */
+	async function run(command: PlayCommand): Promise<string | null> {
+		if (busy) return null;
+		busy = true;
+		section.setAttribute('aria-busy', 'true');
+		try {
+			const beforeView = await source.snapshot();
+			const before = beforeView.state;
+			const result = await source.run(command);
+			if (!result.ok) {
+				lastMessage = result.message;
+				feedback.announce(result.message);
+				await render();
+				return result.message;
+			}
+			feedback.clearFailure();
+			lastMessage = '';
+			mode = null;
+			rolledJustNow = command.type === 'RollDice';
+			fresh = changes(before, result.snapshot.state);
+			await render(result.snapshot);
+			celebrate(beforeView, result.snapshot);
+			feedback.announce(result.announce);
+			return null;
+		} catch (error) {
+			feedback.fail(error, `play:${command.type}`, async () => {
+				await run(command);
+			});
+			await render().catch(() => undefined);
+			return null;
+		} finally {
+			busy = false;
+			section.removeAttribute('aria-busy');
+		}
+	}
+
+	// ------------------------------------------------------------ board
+
+	function overlay(state: PlayState): BoardOverlay {
+		const player = currentPlayer(state) ?? '';
+		const step = expectedStep(state);
+		const buildings = Object.entries(state.buildings).map(([vertex, b]) => ({
+			vertex: Number(vertex),
+			seat: seatOf(state, b.player),
+			kind: b.kind,
+			label: `${b.player}'s ${b.kind} at ${describeCorner(state.board, Number(vertex))}`,
+			fresh: fresh.vertices.has(Number(vertex)),
+		}));
+		const roads = Object.entries(state.roads).map(([edge, owner]) => ({
+			edge: Number(edge),
+			seat: seatOf(state, owner),
+			label: `${owner}'s road ${describeEdge(state.board, Number(edge))}`,
+			fresh: fresh.edges.has(Number(edge)),
+		}));
+
+		let targets: BoardOverlay['targets'];
+		const acting = canAct(state);
+		const vertexTargets = (ids: number[], verb: string, make: (v: number) => PlayCommand) => ({
+			kind: 'vertex' as const,
+			ids,
+			label: (v: number) => `${verb} at ${describeCorner(state.board, v)}`,
+			onPick: (v: number) => void run(make(v)),
+		});
+		const edgeTargets = (ids: number[], make: (e: number) => PlayCommand) => ({
+			kind: 'edge' as const,
+			ids,
+			label: (e: number) => `Build a road ${describeEdge(state.board, e)}`,
+			onPick: (e: number) => void run(make(e)),
+		});
+		if (!acting) {
+			// Another screen makes this move; this one only watches.
+		} else if (step === 'place-settlement') {
+			targets = vertexTargets(legalSetupSettlements(state), 'Place a settlement', (vertex) => ({ type: 'PlaceSetupSettlement', player, vertex }));
+		} else if (step === 'place-road') {
+			targets = edgeTargets(legalSetupRoads(state), (edge) => ({ type: 'PlaceSetupRoad', player, edge }));
+		} else if (step === 'place-free-road') {
+			targets = edgeTargets(legalRoads(state, player), (edge) => ({ type: 'BuildRoad', player, edge }));
+		} else if (step === 'build-or-end' && mode) {
+			const option = buildOptions(state, player).find((o) => o.piece === mode);
+			const spots = option?.allowed ? [...option.spots] : [];
+			if (mode === 'road') targets = edgeTargets(spots, (edge) => ({ type: 'BuildRoad', player, edge }));
+			if (mode === 'settlement') targets = vertexTargets(spots, 'Build a settlement', (vertex) => ({ type: 'BuildSettlement', player, vertex }));
+			if (mode === 'city') targets = vertexTargets(spots, 'Upgrade to a city', (vertex) => ({ type: 'BuildCity', player, vertex }));
+		}
+		const hexTargets =
+			step === 'move-robber' && acting
+				? {
+						keys: legalRobberHexes(state),
+						label: (key: string) => `Move the robber to ${describeHex(state.board, key)}`,
+						onPick: (hex: string) => void run({ type: 'MoveRobber', player, hex }),
+					}
+				: undefined;
+		const harbours = state.harbours.map((h) => ({ edge: h.edge, kind: h.kind, label: describeHarbour(h.kind) }));
+		return { buildings, roads, targets, robber: state.robber, hexTargets, harbours };
+	}
+
+	function boardInstruction(state: PlayState): string {
+		const step = expectedStep(state);
+		if (!canAct(state)) return '';
+		if (step === 'place-settlement') return 'Choose a highlighted corner for the settlement.';
+		if (step === 'place-road') return 'Choose a highlighted edge for the road.';
+		if (step === 'move-robber') return 'Choose a highlighted hex for the robber. It cannot stay where it is.';
+		if (step === 'place-free-road' && state.pending?.kind === 'place-free-road') {
+			const n = state.pending.remaining;
+			return `Choose a highlighted edge for a free road (${n} left).`;
+		}
+		if (step === 'build-or-end' && mode) return `Choose where to build the ${PIECE_NAMES[mode]}. Select Build ${PIECE_NAMES[mode]} again (or press Escape) to cancel.`;
+		return '';
+	}
+
+	// ------------------------------------------------------------ turn panel
+
+	function die(value: number): SVGSVGElement {
+		const pips: Record<number, [number, number][]> = {
+			1: [[2, 2]],
+			2: [[1, 1], [3, 3]],
+			3: [[1, 1], [2, 2], [3, 3]],
+			4: [[1, 1], [3, 1], [1, 3], [3, 3]],
+			5: [[1, 1], [3, 1], [2, 2], [1, 3], [3, 3]],
+			6: [[1, 1], [3, 1], [1, 2], [3, 2], [1, 3], [3, 3]],
+		};
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('viewBox', '0 0 40 40');
+		svg.setAttribute('class', 'die');
+		svg.setAttribute('aria-hidden', 'true');
+		const face = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+		for (const [k, v] of Object.entries({ x: 2, y: 2, width: 36, height: 36, rx: 7, class: 'die__face' })) face.setAttribute(k, String(v));
+		svg.append(face);
+		for (const [cx, cy] of pips[value] ?? []) {
+			const pip = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+			for (const [k, v] of Object.entries({ cx: cx * 10, cy: cy * 10, r: 3.6, class: 'die__pip' })) pip.setAttribute(k, String(v));
+			svg.append(pip);
+		}
+		return svg;
+	}
+
+	function button(label: string, icon: IconName | null, className = 'button'): HTMLButtonElement {
+		const b = el('button', className);
+		b.type = 'button';
+		if (icon) b.append(iconElement(icon));
+		b.append(document.createTextNode(label));
+		return b;
+	}
+
+	function costList(cost: Record<Resource, number>): HTMLElement {
+		const list = el('span', 'cost');
+		for (const r of RESOURCES) {
+			for (let i = 0; i < cost[r]; i++) list.append(iconElement(RESOURCE_ICONS[r], r));
+		}
+		return list;
+	}
+
+	function turnPanel(state: PlayState): HTMLElement[] {
+		const player = currentPlayer(state) ?? '';
+		const actor = actingPlayer(state) ?? player;
+		const step = expectedStep(state);
+		const seat = seatOf(state, actor);
+		const parts: HTMLElement[] = [];
+
+		const head = el('header', 'turn__head');
+		const badge = el('span', `seat seat--${seat}`, String(seat));
+		badge.setAttribute('aria-hidden', 'true');
+		const title = el(
+			'h2',
+			'turn__title',
+			state.winner
+				? 'Game over'
+				: step === 'discard'
+					? `${actor} must discard`
+					: step === 'respond-trade'
+						? `${actor}, you have a trade offer`
+						: `${player}'s turn`,
+		);
+		title.id = 'turn-title';
+		head.append(badge, title);
+		if (state.phase === 'setup') head.append(el('span', 'turn__phase', 'Setup'));
+		parts.push(head);
+
+		// ADR-020: when this screen acts and the buttons already say what to do, skip the sentence.
+		const buttonsSayIt = canAct(state) && (step === 'roll' || step === 'build-or-end');
+		if (step && !buttonsSayIt) parts.push(el('p', 'turn__step', describeStep(step)));
+
+		// Show this turn's roll; before rolling, the previous player's dice would only confuse.
+		if (state.lastRoll && state.phase !== 'setup' && step !== 'roll') {
+			const roll = el('div', `roll${rolledJustNow ? ' roll--new' : ''}`);
+			const dice = el('div', 'roll__dice');
+			dice.append(die(state.lastRoll.dice[0]), die(state.lastRoll.dice[1]));
+			roll.append(dice, el('p', 'roll__text', describeRoll(state.lastRoll, state.players)));
+			parts.push(roll);
+		}
+
+		if (lastMessage) {
+			const message = el('p', 'player__feedback', lastMessage);
+			message.setAttribute('role', 'alert');
+			parts.push(message);
+		}
+
+		if (!canAct(state)) {
+			if (!state.winner && actor) {
+				const waiting = el('p', 'turn__waiting', viewer.kind === 'seat' ? `Waiting for ${actor}.` : `Waiting for ${actor} to play on their phone.`);
+				parts.push(waiting);
+			}
+			return parts;
+		}
+
+		const actions = el('div', 'turn__actions');
+		if (step === 'discard' && state.pending?.kind === 'discard') {
+			actions.append(discardForm(state, actor, state.pending.owed[actor] ?? 0));
+		}
+		if (step === 'steal' && state.pending?.kind === 'steal') {
+			const group = el('div', 'steal');
+			group.setAttribute('role', 'group');
+			group.setAttribute('aria-label', 'Steal a card');
+			for (const victim of state.pending.victims) {
+				const cards = cardCount(state, victim);
+				const b = button(`Steal from ${victim} (${cards} card${cards === 1 ? '' : 's'})`, 'knight', 'button action action--rob action--next');
+				// The card is chosen at random here and checked by the rules (ADR-011).
+				b.addEventListener('click', () => void run({ type: 'StealFrom', player, victim, pick: randomBelow(cards) }));
+				group.append(b);
+			}
+			actions.append(group);
+		}
+		if (step === 'respond-trade' && state.pending?.kind === 'respond-trade') {
+			actions.append(responsePanel(state, state.pending));
+		}
+		if (step === 'roll') {
+			const roll = button('Roll the dice', 'dice', 'button action action--roll action--next');
+			roll.addEventListener('click', () => void run({ type: 'RollDice', player, dice: [rollDie(), rollDie()] }));
+			actions.append(roll);
+			// Cards can be played before rolling (a knight, say).
+			const cards = devCardPanel(state, player);
+			if (cards) actions.append(cards);
+		}
+		if (step === 'build-or-end') {
+			// ADR-020: only what this player can do right now.
+			const builds = el('div', 'builds');
+			builds.setAttribute('role', 'group');
+			builds.setAttribute('aria-label', 'Build');
+			for (const option of buildOptions(state, player)) {
+				if (!option.allowed) continue;
+				const b = el('button', `button action action--build${mode === option.piece ? ' is-active' : ''}`);
+				b.type = 'button';
+				b.setAttribute('aria-pressed', String(mode === option.piece));
+				const label = el('span', 'action__label');
+				label.append(iconElement(PIECE_ICONS[option.piece]), document.createTextNode(`Build ${PIECE_NAMES[option.piece]}`));
+				b.append(label, costList(option.cost));
+				b.addEventListener('click', () => {
+					mode = mode === option.piece ? null : option.piece;
+					lastMessage = '';
+					void render().then(() => {
+						if (mode) board.querySelector<SVGElement>('[data-spot]')?.focus();
+					});
+				});
+				builds.append(b);
+			}
+			const buy = buyCardButton(state, player);
+			if (buy) builds.append(buy);
+			const extras = [tradeForm(state, player), offerForm(state, player), devCardPanel(state, player)].filter(
+				(x): x is HTMLElement => x !== null,
+			);
+			if (builds.childElementCount > 0) actions.append(builds);
+			actions.append(...extras);
+			const nothing = builds.childElementCount === 0 && extras.length === 0;
+			if (nothing) actions.append(el('p', 'turn__nothing', 'Nothing you can do right now.'));
+			const end = button('End turn', 'check', `button action action--end turn__end${nothing ? ' action--next' : ''}`);
+			end.addEventListener('click', () => void run({ type: 'EndTurn', player }));
+			actions.append(end);
+		}
+		parts.push(actions);
+		return parts;
+	}
+
+	/** Buy a development card, offered only when it is affordable and the deck is not empty. */
+	function buyCardButton(state: PlayState, player: string): HTMLButtonElement | null {
+		const short = missing(state.hands[player] ?? emptyHand, DEV_CARD_COST);
+		if (state.deck.length === 0 || handSize(short) > 0) return null;
+		const b = el('button', 'button action action--card');
+		b.type = 'button';
+		const label = el('span', 'action__label');
+		label.append(iconElement('card'), document.createTextNode('Buy card'));
+		b.append(label, costList(DEV_CARD_COST));
+		b.addEventListener('click', () => void run({ type: 'BuyDevelopmentCard', player }));
+		return b;
+	}
+
+	/** The development cards this player can play now; null when there are none. */
+	function devCardPanel(state: PlayState, player: string): HTMLElement | null {
+		const options = devCardOptions(state, player).filter((o) => o.allowed && o.card !== 'victory-point');
+		if (options.length === 0) return null;
+		const section = el('section', 'cards');
+		section.setAttribute('aria-label', `${player}'s development cards`);
+		for (const option of options) {
+			const row = el('div', 'card-row');
+			const choose = (labelText: string) => {
+				const select = el('select', 'input trade__select');
+				select.setAttribute('aria-label', labelText);
+				for (const r of RESOURCES) select.append(new Option(r, r));
+				return select;
+			};
+			let command: () => PlayCommand | null = () => null;
+			const controls: HTMLElement[] = [];
+			if (option.card === 'knight') command = () => ({ type: 'PlayKnight', player });
+			if (option.card === 'road-building') command = () => ({ type: 'PlayRoadBuilding', player });
+			if (option.card === 'year-of-plenty') {
+				const a = choose('First resource');
+				const b = choose('Second resource');
+				controls.push(a, b);
+				command = () => ({ type: 'PlayYearOfPlenty', player, resources: [a.value as Resource, b.value as Resource] });
+			}
+			if (option.card === 'monopoly') {
+				const r = choose('Resource to take');
+				controls.push(r);
+				command = () => ({ type: 'PlayMonopoly', player, resource: r.value as Resource });
+			}
+			const play = button(`Play ${CARD_NAMES[option.card].toLowerCase()}`, option.card === 'knight' ? 'knight' : 'card', 'button action action--card');
+			// The effect is a tooltip and an accessible description, not a paragraph on screen (ADR-020).
+			play.title = CARD_EFFECTS[option.card];
+			play.setAttribute('aria-description', CARD_EFFECTS[option.card]);
+			play.addEventListener('click', () => {
+				const c = command();
+				if (c) void run(c);
+			});
+			row.append(play, ...controls);
+			section.append(row);
+		}
+		return section;
+	}
+
+	/** Steppers for choosing which cards to discard after a 7. */
+	function discardForm(state: PlayState, player: string, owed: number): HTMLElement {
+		const form = el('form', 'discard');
+		form.setAttribute('aria-label', `${player}: discard ${owed} cards`);
+		const held = state.hands[player] ?? emptyHand;
+		const chosen: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+		const status = el('p', 'discard__status numeric');
+		status.setAttribute('aria-live', 'polite');
+		const submit = button('Discard', 'close', 'button action action--rob');
+		submit.type = 'submit';
+		const rows = el('div', 'discard__rows');
+		const update = () => {
+			const total = RESOURCES.reduce((n, r) => n + chosen[r], 0);
+			status.textContent = `${total} of ${owed} chosen`;
+			submit.disabled = total !== owed;
+			for (const r of RESOURCES) {
+				rows.querySelector<HTMLOutputElement>(`[data-count="${r}"]`)!.textContent = String(chosen[r]);
+				rows.querySelector<HTMLButtonElement>(`[data-less="${r}"]`)!.disabled = chosen[r] === 0;
+				rows.querySelector<HTMLButtonElement>(`[data-more="${r}"]`)!.disabled = chosen[r] >= held[r] || total >= owed;
+			}
+		};
+		for (const r of RESOURCES) {
+			if (held[r] === 0) continue;
+			const row = el('div', 'discard__row');
+			const label = el('span', 'discard__name');
+			label.append(iconElement(RESOURCE_ICONS[r]), document.createTextNode(`${r} (${held[r]})`));
+			const less = button('−', null, 'button button--small');
+			less.dataset.less = r;
+			less.setAttribute('aria-label', `Discard one fewer ${r}`);
+			const count = el('output', 'discard__count numeric', '0');
+			count.dataset.count = r;
+			const more = button('+', null, 'button button--small');
+			more.dataset.more = r;
+			more.setAttribute('aria-label', `Discard one more ${r}`);
+			less.addEventListener('click', () => {
+				chosen[r] -= 1;
+				update();
+			});
+			more.addEventListener('click', () => {
+				chosen[r] += 1;
+				update();
+			});
+			row.append(label, less, count, more);
+			rows.append(row);
+		}
+		form.append(rows, status, submit);
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			void run({ type: 'DiscardCards', player, cards: { ...chosen } });
+		});
+		// Rows must exist before the first update.
+		queueMicrotask(update);
+		return form;
+	}
+
+	/** Up/down steppers for an amount of each resource. Returns the element and a reader. */
+	function resourcePicker(label: string, limit: (r: Resource) => number, onChange: () => void) {
+		const chosen: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+		const group = el('fieldset', 'picker');
+		group.append(el('legend', 'picker__legend', label));
+		for (const r of RESOURCES) {
+			const max = limit(r);
+			const row = el('div', 'discard__row');
+			const name = el('span', 'discard__name');
+			name.append(iconElement(RESOURCE_ICONS[r]), document.createTextNode(r));
+			const less = button('−', null, 'button button--small');
+			less.setAttribute('aria-label', `${label}: one fewer ${r}`);
+			const count = el('output', 'discard__count numeric', '0');
+			const more = button('+', null, 'button button--small');
+			more.setAttribute('aria-label', `${label}: one more ${r}`);
+			const sync = () => {
+				count.textContent = String(chosen[r]);
+				less.disabled = chosen[r] === 0;
+				more.disabled = chosen[r] >= max;
+			};
+			less.addEventListener('click', () => {
+				chosen[r] -= 1;
+				sync();
+				onChange();
+			});
+			more.addEventListener('click', () => {
+				chosen[r] += 1;
+				sync();
+				onChange();
+			});
+			sync();
+			row.append(name, less, count, more);
+			group.append(row);
+		}
+		return { element: group, value: () => ({ ...chosen }) };
+	}
+
+	/** Offer a trade to another player; tucked away until opened (progressive disclosure). */
+	/** Offer a trade to another player; only when this player holds cards. Tucked away until opened. */
+	function offerForm(state: PlayState, player: string): HTMLElement | null {
+		const others = state.players.filter((p) => p !== player);
+		if (others.length === 0 || handSize(state.hands[player] ?? emptyHand) === 0) return null;
+		const details = el('details', 'offer');
+		details.append(el('summary', undefined, 'Trade with a player'));
+		const form = el('form', 'offer__form');
+		const to = el('select', 'input trade__select');
+		to.setAttribute('aria-label', 'Trade with');
+		for (const p of others) to.append(new Option(p, p));
+		const held = state.hands[player] ?? emptyHand;
+		const submit = button('Offer trade', 'retry', 'button action action--trade action--small');
+		submit.type = 'submit';
+		const check = () => {
+			const total = (h: Record<Resource, number>) => RESOURCES.reduce((n, r) => n + h[r], 0);
+			submit.disabled = total(give.value()) === 0 || total(get.value()) === 0;
+		};
+		const give = resourcePicker('You give', (r) => held[r], check);
+		const get = resourcePicker('You get', () => 19, check);
+		const who = el('label', 'offer__to');
+		who.append(document.createTextNode('Trade with '), to);
+		form.append(who, give.element, get.element, submit);
+		check();
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			void run({ type: 'ProposeTrade', player, to: to.value, give: give.value(), get: get.value() });
+		});
+		details.append(form);
+		return details;
+	}
+
+	/** The recipient sees the offer and answers it. */
+	function responsePanel(state: PlayState, offer: { from: string; to: string; give: Hand; get: Hand }): HTMLElement {
+		const panel = el('div', 'response');
+		panel.append(
+			el('p', 'response__terms', `${offer.from} offers ${describeHand(offer.give)} for your ${describeHand(offer.get)}.`),
+		);
+		const short = missing(state.hands[offer.to] ?? emptyHand, offer.get);
+		const accept = button('Accept trade', 'check', 'button action action--trade action--next');
+		accept.disabled = handSize(short) > 0;
+		accept.addEventListener('click', () => void run({ type: 'AcceptTrade', player: offer.to }));
+		const decline = button('Decline', 'close', 'button action action--end');
+		decline.addEventListener('click', () => void run({ type: 'DeclineTrade', player: offer.to }));
+		const buttons = el('div', 'response__buttons');
+		buttons.append(accept, decline);
+		panel.append(buttons);
+		if (handSize(short) > 0) panel.append(el('p', 'build__note', `You need ${describeHand(short)} more to accept.`));
+		return panel;
+	}
+
+	/** A bank trade, offered only when this player has enough of something to trade. */
+	function tradeForm(state: PlayState, player: string): HTMLElement | null {
+		const form = el('form', 'trade');
+		form.setAttribute('aria-label', 'Trade with the bank');
+		const rate = (r: Resource) => tradeRate(state, player, r);
+		const offer = tradeableResources(state.hands[player] ?? emptyHand, rate);
+		const best = Math.min(...RESOURCES.map(rate));
+		if (offer.length === 0) return null;
+		const legend = el('p', 'trade__title', best < 4 ? 'Bank trade (harbour rates)' : 'Bank trade');
+		const give = el('select', 'input trade__select');
+		give.setAttribute('aria-label', 'Give');
+		const get = el('select', 'input trade__select');
+		get.setAttribute('aria-label', 'Get 1');
+		for (const r of offer) give.append(new Option(`${rate(r)} ${r}`, r));
+		for (const r of RESOURCES) get.append(new Option(`1 ${r}`, r));
+		const firstOther = RESOURCES.find((r) => r !== offer[0]);
+		if (firstOther) get.value = firstOther;
+		const submit = button('Trade', 'retry', 'button action action--trade action--small');
+		submit.type = 'submit';
+		form.append(legend);
+		const row = el('div', 'trade__row');
+		row.append(give, el('span', 'trade__for', 'for'), get, submit);
+		form.append(row);
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			void run({ type: 'TradeWithBank', player, give: give.value as Resource, get: get.value as Resource });
+		});
+		return form;
+	}
+
+	// ------------------------------------------------------------ players
+
+	function playerRow(state: PlayState, player: string): HTMLElement {
+		const seat = seatOf(state, player);
+		const isCurrent = actingPlayer(state) === player && !state.winner;
+		const row = el('article', `play-player seat-color--${seat}`);
+		row.dataset.player = player;
+		row.classList.toggle('play-player--current', isCurrent);
+		row.classList.toggle('player--winner', state.winner === player);
+		row.setAttribute('aria-label', `${player}${isCurrent ? ', playing now' : ''}`);
+
+		const head = el('header', 'player__head');
+		const badge = el('span', `seat seat--${seat}`, String(seat));
+		badge.setAttribute('aria-hidden', 'true');
+		const score = el('p', 'player__score');
+		// Others see only visible points; the player whose input is needed also sees their hidden ones.
+		const vp = visiblePoints(state, player);
+		const ownsScreen = viewer.kind === 'device' ? isCurrent : seesCardsOf(state, player);
+		const hidden = ownsScreen || state.winner === player ? hiddenPoints(state, player) : 0;
+		score.append(el('strong', 'numeric', String(vp + hidden)), el('span', undefined, ` of ${WINNING_POINTS} points`));
+		if (hidden > 0) score.append(el('span', 'player__hidden', ` (${hidden} from hidden cards)`));
+		head.append(badge, el('h3', 'player__name', player), score);
+
+		const meter = el('div', 'meter');
+		meter.setAttribute('role', 'meter');
+		meter.setAttribute('aria-valuemin', '0');
+		meter.setAttribute('aria-valuemax', String(WINNING_POINTS));
+		meter.setAttribute('aria-valuenow', String(Math.min(vp + hidden, WINNING_POINTS)));
+		meter.setAttribute('aria-label', `${player}'s progress to ${WINNING_POINTS} points`);
+		for (let i = 0; i < WINNING_POINTS; i++) meter.append(el('span', i < vp + hidden ? 'meter__step meter__step--on' : 'meter__step'));
+
+		const hand = state.hands[player] ?? emptyHand;
+		let cards: HTMLElement = el('dl', 'hand');
+		cards.setAttribute('aria-label', `${player}'s resources`);
+		const gained = fresh.gains[player] ?? {};
+		for (const r of RESOURCES) {
+			const gain = gained[r] ?? 0;
+			const item = el('div', `hand__item${hand[r] === 0 ? ' hand__item--none' : ''}${gain > 0 ? ' hand__item--gain' : ''}`);
+			const value = el('dd', 'hand__count numeric');
+			value.append(iconElement(RESOURCE_ICONS[r]), document.createTextNode(String(hand[r])));
+			// The roll summary already announces gains, so the badge is visual only.
+			if (gain > 0) {
+				const badge = el('span', 'hand__gain', `+${gain}`);
+				badge.setAttribute('aria-hidden', 'true');
+				value.append(badge);
+			}
+			item.append(value, el('dt', 'hand__name', r));
+			cards.append(item);
+		}
+		if (!seesCardsOf(state, player)) {
+			// Rooms (ADR-019): other players' cards are private; only how many is public.
+			const count = cardCount(state, player);
+			cards = el('p', 'hand-count numeric', `${count} resource card${count === 1 ? '' : 's'}`);
+			cards.setAttribute('aria-label', `${player} holds ${count} resource card${count === 1 ? '' : 's'}`);
+		}
+
+		const left = piecesLeft(state, player);
+		const supply = el('p', 'supply');
+		supply.append(document.createTextNode('Left: '));
+		for (const piece of ['road', 'settlement', 'city'] as const) {
+			const item = el('span', 'supply__item');
+			const name = left[piece] === 1 ? PIECE_NAMES[piece] : piece === 'city' ? 'cities' : `${PIECE_NAMES[piece]}s`;
+			item.append(iconElement(PIECE_ICONS[piece]), document.createTextNode(`${left[piece]} ${name}`));
+			supply.append(item);
+		}
+
+		const awards = el('ul', 'awards');
+		if (state.winner === player) {
+			const w = el('li', 'award award--winner');
+			w.append(iconElement('crown'), document.createTextNode('Winner'));
+			awards.append(w);
+		}
+		if (state.longestRoad === player) {
+			const a = el('li', 'award');
+			a.append(iconElement('trophy'), document.createTextNode(`Longest Road (${longestRoadLength(state, player)})`));
+			awards.append(a);
+		}
+		if (state.largestArmy === player) {
+			const a = el('li', 'award');
+			a.append(iconElement('army'), document.createTextNode(`Largest Army (${state.knightsPlayed[player] ?? 0})`));
+			awards.append(a);
+		}
+		const devCards = devCardCount(state, player);
+		const knights = state.knightsPlayed[player] ?? 0;
+		const extras = el('span', 'supply__item');
+		extras.append(iconElement('card'), document.createTextNode(`${devCards} card${devCards === 1 ? '' : 's'}`));
+		const army = el('span', 'supply__item');
+		army.append(iconElement('knight'), document.createTextNode(`${knights} knight${knights === 1 ? '' : 's'} played`));
+		supply.append(extras, army);
+
+		row.append(head, meter, awards, cards, supply);
+		return row;
+	}
+
+	/** The shared board's leaderboard (ADR-020): ranked, big numbers, awards at a glance. */
+	function leaderboard(state: PlayState): HTMLElement {
+		const section = el('section', 'leaderboard');
+		section.setAttribute('aria-labelledby', 'leaderboard-title');
+		const title = el('h2', 'leaderboard__title', 'Leaderboard');
+		title.id = 'leaderboard-title';
+		const list = el('ol', 'leaderboard__list');
+		const ranks = ranking(state);
+		const acting = actingPlayer(state);
+		for (const { player, points: score, rank } of ranks) {
+			const seat = seatOf(state, player);
+			const item = el('li', `leaderboard__row seat-color--${seat} leaderboard__row--rank-${Math.min(rank, 4)}`);
+			item.dataset.player = player;
+			const previous = lastRanks.get(player);
+			if (previous !== undefined && rank < previous) item.classList.add('leaderboard__row--up');
+			item.classList.toggle('leaderboard__row--acting', acting === player && !state.winner);
+			const badge = el('span', 'leaderboard__rank numeric', String(rank));
+			badge.setAttribute('aria-label', `Rank ${rank}`);
+			const name = el('span', 'leaderboard__name');
+			name.append(el('span', `seat seat--${seat}`, String(seat)), document.createTextNode(` ${player}`));
+			if (acting === player && !state.winner) name.append(el('span', 'leaderboard__now', 'playing'));
+			const meter = el('span', 'leaderboard__meter');
+			meter.setAttribute('aria-hidden', 'true');
+			const fill = el('span', 'leaderboard__fill');
+			fill.style.width = `${Math.min(100, (score / WINNING_POINTS) * 100)}%`;
+			meter.append(fill);
+			const extras = el('span', 'leaderboard__extras');
+			if (state.winner === player) extras.append(iconElement('crown', 'Winner'));
+			if (state.longestRoad === player) extras.append(iconElement('trophy', 'Longest Road'));
+			if (state.largestArmy === player) extras.append(iconElement('army', 'Largest Army'));
+			const cards = cardCount(state, player);
+			extras.append(el('span', 'leaderboard__cards numeric', `${cards} card${cards === 1 ? '' : 's'}`));
+			const points_ = el('span', 'leaderboard__points numeric', String(score));
+			points_.setAttribute('aria-label', `${score} of ${WINNING_POINTS} points`);
+			item.append(badge, name, points_, meter, extras);
+			list.append(item);
+		}
+		lastRanks = new Map(ranks.map((r) => [r.player, r.rank]));
+		section.append(title, list);
+		return section;
+	}
+
+	// ------------------------------------------------------------ render
+
+	async function render(snapshot?: PlaySnapshot): Promise<void> {
+		shown = snapshot ?? (await source.snapshot());
+		const { state, history } = shown;
+		if (!state.started || !state.board) return;
+		show('play');
+
+		renderBoard(board, state.board, boardList, overlay(state));
+		for (const h of state.harbours) {
+			const [a] = TOPOLOGY.edges[h.edge]?.ends ?? [0];
+			boardList.append(el('li', undefined, `${describeHarbour(h.kind)} by ${describeCorner(state.board, a)}`));
+		}
+		boardHint.textContent = boardInstruction(state);
+		turn.replaceChildren(...turnPanel(state));
+		roster.replaceChildren(...(viewer.kind === 'board' ? [leaderboard(state)] : state.players.map((p) => playerRow(state, p))));
+
+		winner.hidden = state.winner === null;
+		if (state.winner) {
+			winner.querySelector('.notice__body')?.replaceChildren(
+				el('p', 'notice__title', `${state.winner} wins with ${points(state, state.winner)} points.`),
+				el('p', undefined, 'The game is over. Start a new game to play again.'),
+			);
+		}
+
+		events.replaceChildren(...[...history].reverse().map((text) => el('li', undefined, text)));
+		eventCount.textContent = String(history.length);
+		rolledJustNow = false;
+		fresh = { vertices: new Set(), edges: new Set(), gains: {} };
+	}
+
+	document.addEventListener('keydown', (event) => {
+		if (event.key === 'Escape' && mode && !section.hidden) {
+			mode = null;
+			void render().then(() => feedback.announce('Building cancelled.'));
+		}
+	});
+
+	return {
+		render: () => render(),
+		run,
+		async update(snapshot) {
+			const before = shown;
+			if (before) fresh = changes(before.state, snapshot.state);
+			rolledJustNow = before !== null && JSON.stringify(snapshot.state.lastRoll) !== JSON.stringify(before.state.lastRoll);
+			await render(snapshot);
+			celebrate(before, snapshot);
+			const added = snapshot.history.slice(before?.history.length ?? snapshot.history.length);
+			if (added.length > 0) feedback.announce(`${added.join('. ')}.`);
+		},
+		forget() {
+			mode = null;
+			lastMessage = '';
+		},
+	};
+}
